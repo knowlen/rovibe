@@ -18,7 +18,7 @@ Sort of like virtual environments, but for users & enforced by the kernel instea
 
 ## How it works
 Each agent gets:
-- A dedicated user account on the operating system with access only to an explicit binary allowlist (`/opt/agents/bin/`)
+- A dedicated user account with access only to an explicit binary allowlist (`/opt/agents/bin/`)
 - A read-only mirror of the target project
 - A writable scratch space for review output
 
@@ -90,7 +90,7 @@ sudo rovibe uninstall [--purge]
 - Bash, Git, standard Unix tools (`useradd`, `groupadd`, `find`, etc.)
 - `fswatch` optional — enables live mirror sync during sessions
 
-Tested on Arch Linux. macOS support soon.
+Tested on Arch Linux. macOS to follow.
 
 ## License
 
