@@ -7,12 +7,14 @@
 
 ![rovibe architechture](docs/rovibe-diag.svg)
 
-This tool provisions isolated OS users for Claude Code sessions. Like virtual environments, 
-but enforced by the kernel instead of the runtime.
-
 Modern LLM coding agents can trivially circumvent prompt-based restrictions and config files 
 like `.claude/settings.json`. rovibe provisions real OS users with restricted PATHs and read-only 
 symlink mirrors of a project, letting the kernel enforce (hard) isolation.
+
+This tool provisions isolated OS users for Claude Code sessions. Like virtual environments, 
+but enforced by the kernel instead of the runtime.
+
+
 
 
 
