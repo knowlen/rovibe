@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="rovibe"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+ROVIBE_LIB="${ROVIBE_LIB:-/usr/local/lib/rovibe}"
+
+usage() {
+  cat <<'EOF'
+Usage: rovibe <command> [args...]
+
+Commands:
+  create agent <username> <role>          Create an isolated agent identity
+  delete agent <username>                 Delete an agent identity
+  assign reviewer <agent> <project-dir>   Assign agent as project reviewer
+  unassign reviewer <agent> <project-dir> Remove agent's reviewer assignment
+  launch reviewer <agent> <project-dir>   Launch a reviewer session
+  list reviewers <project-dir>            List agents and assignment status
+  sync <project-dir>                      Sync all mirrors for a project
+  uninstall [--purge]                     Remove rovibe from the system
+EOF
+  exit 1
+}
+
+[[ $# -ge 1 ]] || usage
+
+VERB="$1"; shift
+
+case "$VERB" in
+  create)
+    [[ $# -ge 1 ]] || usage
+    NOUN="$1"; shift
+    case "$NOUN" in
+      agent) exec "$ROVIBE_LIB/create-agent" "$@" ;;
+      *)     usage ;;
+    esac
+    ;;
+  delete)
+    [[ $# -ge 1 ]] || usage
+    NOUN="$1"; shift
+    case "$NOUN" in
+      agent)
+        [[ $# -ge 1 ]] || err "delete agent requires a username"
+        USERNAME="$1"; shift
+        exec "$ROVIBE_LIB/create-agent" "$USERNAME" reviewer --delete
+        ;;
+      *) usage ;;
+    esac
+    ;;
+  assign)
+    [[ $# -ge 1 ]] || usage
+    NOUN="$1"; shift
+    case "$NOUN" in
+      reviewer) exec "$ROVIBE_LIB/assign-reviewer" "$@" ;;
+      *)        usage ;;
+    esac
+    ;;
+  unassign)
+    [[ $# -ge 1 ]] || usage
+    NOUN="$1"; shift
+    case "$NOUN" in
+      reviewer) exec "$ROVIBE_LIB/unassign-reviewer" "$@" ;;
+      *)        usage ;;
+    esac
+    ;;
+  launch)
+    [[ $# -ge 1 ]] || usage
+    NOUN="$1"; shift
+    case "$NOUN" in
+      reviewer) exec "$ROVIBE_LIB/launch-reviewer" "$@" ;;
+      *)        usage ;;
+    esac
+    ;;
+  list)
+    [[ $# -ge 1 ]] || usage
+    NOUN="$1"; shift
+    case "$NOUN" in
+      reviewers) exec "$ROVIBE_LIB/list-reviewers" "$@" ;;
+      *)         usage ;;
+    esac
+    ;;
+  sync)
+    # Inline sync: find all agent mirrors for this project and sync them
+    [[ $# -ge 1 ]] || err "sync requires a project directory"
+    PROJECT_DIR="$1"; shift
+    [[ -d "$PROJECT_DIR" ]] || err "Project directory does not exist: $PROJECT_DIR"
+    PROJECT_DIR=$(realpath "$PROJECT_DIR")
+    PROJECT_NAME=$(basename "$PROJECT_DIR")
+
+    # Get agents group members
+    if ! getent group agents >/dev/null 2>&1; then
+      err "Group 'agents' does not exist"
+    fi
+
+    MEMBERS_LINE=$(getent group agents | cut -d: -f4)
+    if [[ -z "$MEMBERS_LINE" ]]; then
+      log "No members in 'agents' group."
+      exit 0
+    fi
+
+    IFS=',' read -ra MEMBERS <<< "$MEMBERS_LINE"
+    COUNT=0
+
+    for user in "${MEMBERS[@]}"; do
+      MIRROR="/home/$user/mirrors/$PROJECT_NAME"
+      if [[ -d "$MIRROR" ]]; then
+        log "Syncing mirror for $user..."
+        sudo -u "$user" "$ROVIBE_LIB/sync-mirror" "$PROJECT_DIR" "$MIRROR"
+        COUNT=$((COUNT + 1))
+      fi
+    done
+
+    log "Synced $COUNT mirror(s)."
+    ;;
+  uninstall)
+    exec "$ROVIBE_LIB/uninstall.sh" "$@"
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    usage
+    ;;
+esac

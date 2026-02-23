@@ -122,6 +122,9 @@ create_agent() {
     esac
   fi
 
+  # Make home traversable so agent can cd into it
+  sudo chmod 711 "$home"
+
   # Ensure user is in agents group
   case "$os" in
     Linux)
