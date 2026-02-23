@@ -1,8 +1,11 @@
 # rovibe
 
-Provisions isolated OS users for Claude Code agents. Like virtual environments, but enforced by the kernel instead of the runtime.
+This tool provisions isolated OS users for Claude Code sessions. Like virtual environments, 
+but enforced by the kernel instead of the runtime.
 
-Modern LLM coding agents can trivially circumvent prompt-based restrictions and config files like `.claude/settings.json`. rovibe provisions real OS users with restricted PATHs and read-only symlink mirrors of your project. The kernel enforces the isolation.
+Modern LLM coding agents can trivially circumvent prompt-based restrictions and config files 
+like `.claude/settings.json`. rovibe provisions real OS users with restricted PATHs and read-only 
+symlink mirrors of a project, letting the kernel enforce (hard) isolation.
 
 Each agent gets:
 - A dedicated user account with access only to an explicit binary allowlist (`/opt/agents/bin/`)
@@ -12,6 +15,8 @@ Each agent gets:
 Agent-to-agent message passing via prompt injection is planned.
 
 ## How it works
+
+![rovibe architechture](docs/rovibe-diag.svg)
 
 Each agent is a real OS user in the `agents` group, locked to `PATH=/opt/agents/bin` (readonly in `.bashrc`), and given a symlink mirror of your project where every file points back to the source. Files are readable via group permissions but not writable. The only writable space is `.scratch/`. Hard resource limits apply on Linux (`nproc=256`, `nofile=4096`).
 
