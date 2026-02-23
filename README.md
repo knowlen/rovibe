@@ -16,10 +16,9 @@ Agent-to-agent message passing via prompt injection is planned.
 
 ## How it works
 
-
 Each agent is a real OS user in the `agents` group, locked to `PATH=/opt/agents/bin` (readonly in `.bashrc`), and given a symlink mirror of your project where every file points back to the source. Files are readable via group permissions but not writable. The only writable space is `.scratch/`. Hard resource limits apply on Linux (`nproc=256`, `nofile=4096`).
 
-No containers. No VMs. Just Unix users, groups, and file permissions.
+**TL;DR:** Unix users, groups, and file permissions. No containers or VMs. 
 
 ## Installation
 
