@@ -90,7 +90,7 @@ sudo rovibe uninstall [--purge]
 - Bash, Git, standard Unix tools (`useradd`, `groupadd`, `find`, etc.)
 - `fswatch` optional — enables live mirror sync during sessions
 
-Tested on Arch Linux. macOS supported.
+Tested on Arch Linux. macOS support soon.
 
 ## License
 
