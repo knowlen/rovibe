@@ -60,6 +60,7 @@ if $PURGE; then
   # Remove agents bin directory
   if [[ -d /opt/agents/bin ]]; then
     rm -rf /opt/agents/bin
+    rmdir /opt/agents 2>/dev/null || true
     log "Removed /opt/agents/bin/"
   else
     log "/opt/agents/bin/ not found, skipping"
