@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="launch-reviewer"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: launch-reviewer <agent-user> <project-dir> [--prompt-file <path>]
+
+Launches a reviewer session for the given agent:
+  1. Runs sync-mirror to pick up any new files
+  2. Starts fswatch watcher for live sync (if available)
+  3. Launches claude/cc as the agent user
+
+Options:
+  --prompt-file <path>   Pass prompt content via --print to Claude Code
+EOF
+  exit 1
+}
+
+# --- Parse arguments ---
+AGENT_USER=""
+PROJECT_DIR=""
+PROMPT_FILE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --prompt-file)
+      [[ $# -ge 2 ]] || err "--prompt-file requires a path argument"
+      PROMPT_FILE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      if [[ -z "$AGENT_USER" ]]; then
+        AGENT_USER="$1"
+      elif [[ -z "$PROJECT_DIR" ]]; then
+        PROJECT_DIR="$1"
+      else
+        err "Unexpected argument: $1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+[[ -n "$AGENT_USER" ]] || err "Missing agent username"
+[[ -n "$PROJECT_DIR" ]] || err "Missing project directory"
+[[ -d "$PROJECT_DIR" ]] || err "Project directory does not exist: $PROJECT_DIR"
+id "$AGENT_USER" >/dev/null 2>&1 || err "Agent user '$AGENT_USER' does not exist"
+
+PROJECT_DIR=$(realpath "$PROJECT_DIR")
+PROJECT_NAME=$(basename "$PROJECT_DIR")
+MIRROR_DIR="/home/$AGENT_USER/mirrors/$PROJECT_NAME"
+
+[[ -d "$MIRROR_DIR" ]] || err "Mirror does not exist at $MIRROR_DIR — run assign-reviewer first"
+
+# Find sync-mirror
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SYNC_MIRROR=""
+if [[ -x "$SCRIPT_DIR/sync-mirror" ]]; then
+  SYNC_MIRROR="$SCRIPT_DIR/sync-mirror"
+elif command -v sync-mirror >/dev/null 2>&1; then
+  SYNC_MIRROR="sync-mirror"
+else
+  err "sync-mirror not found"
+fi
+
+# --- Step 1: Initial sync ---
+log "Running initial sync..."
+sudo -u "$AGENT_USER" "$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR"
+
+# --- Step 2: Start fswatch watcher (if available) ---
+WATCHER_PID=""
+
+cleanup() {
+  if [[ -n "$WATCHER_PID" ]]; then
+    log "Stopping file watcher (PID $WATCHER_PID)..."
+    kill "$WATCHER_PID" 2>/dev/null || true
+    wait "$WATCHER_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+if command -v fswatch >/dev/null 2>&1; then
+  log "Starting fswatch watcher on $PROJECT_DIR..."
+  (
+    fswatch -r -e '\.git' -e '\.scratch' "$PROJECT_DIR" | while read -r _; do
+      sudo -u "$AGENT_USER" "$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR" 2>/dev/null || true
+    done
+  ) &
+  WATCHER_PID=$!
+  log "Watcher started (PID $WATCHER_PID)"
+else
+  log "WARN: fswatch not installed — live sync disabled."
+  log "  Files added to the project after launch will not appear in the mirror."
+  log "  Run sync-mirror manually to update, or install fswatch."
+fi
+
+# --- Step 3: Find claude/cc command ---
+CLAUDE_CMD=""
+if command -v claude >/dev/null 2>&1; then
+  CLAUDE_CMD="claude"
+elif command -v cc >/dev/null 2>&1; then
+  CLAUDE_CMD="cc"
+else
+  err "Neither 'claude' nor 'cc' found in PATH"
+fi
+
+# --- Step 4: Launch Claude Code as agent user ---
+log "Launching $CLAUDE_CMD as '$AGENT_USER' in $MIRROR_DIR..."
+
+CLAUDE_ARGS=()
+if [[ -n "$PROMPT_FILE" ]]; then
+  [[ -f "$PROMPT_FILE" ]] || err "Prompt file not found: $PROMPT_FILE"
+  PROMPT_CONTENT=$(<"$PROMPT_FILE")
+  CLAUDE_ARGS+=(--print "$PROMPT_CONTENT")
+fi
+
+sudo -u "$AGENT_USER" bash --login -c "cd '$MIRROR_DIR' && $CLAUDE_CMD ${CLAUDE_ARGS[*]:+${CLAUDE_ARGS[*]}}"
+
+log "Reviewer session ended."

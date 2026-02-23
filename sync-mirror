@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="sync-mirror"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: sync-mirror <source-dir> <mirror-dir>
+
+Creates a read-only symlink mirror of <source-dir> at <mirror-dir>.
+Real directories are created for each directory in the source.
+Symlinks are created for each file, pointing back to the source.
+
+Respects .gitignore patterns (simplified parsing).
+Always excludes: .git, .claude, CLAUDE.md, .scratch
+
+This operation is additive-only: it creates missing entries but
+never removes existing ones.
+EOF
+  exit 1
+}
+
+# --- Gitignore parsing ---
+
+# Loads gitignore patterns from a file into the IGNORE_PATTERNS array
+load_gitignore() {
+  local gitignore="$1"
+  IGNORE_PATTERNS=()
+
+  [[ -f "$gitignore" ]] || return 0
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip blank lines and comments
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    # Strip trailing whitespace
+    line="${line%"${line##*[![:space:]]}"}"
+    IGNORE_PATTERNS+=("$line")
+  done < "$gitignore"
+}
+
+# Checks if a relative path should be ignored
+# Args: relative_path is_dir(true/false)
+should_ignore() {
+  local relpath="$1"
+  local is_dir="$2"
+  local name
+  name=$(basename "$relpath")
+
+  # Always-excluded entries
+  case "$name" in
+    .git|.claude|CLAUDE.md|.scratch)
+      return 0
+      ;;
+  esac
+
+  for pattern in "${IGNORE_PATTERNS[@]+"${IGNORE_PATTERNS[@]}"}"; do
+    local dir_only=false
+    local anchored=false
+    local p="$pattern"
+
+    # Directory-only pattern (trailing /)
+    if [[ "$p" == */ ]]; then
+      dir_only=true
+      p="${p%/}"
+    fi
+
+    # If dir_only and this is not a dir, skip
+    if $dir_only && [[ "$is_dir" != "true" ]]; then
+      continue
+    fi
+
+    # Anchored pattern (starts with /)
+    if [[ "$p" == /* ]]; then
+      anchored=true
+      p="${p#/}"
+    fi
+
+    # Match the pattern
+    if $anchored; then
+      # Match against full relative path
+      # shellcheck disable=SC2254
+      if [[ "$relpath" == $p ]]; then
+        return 0
+      fi
+    else
+      # Match against basename or any path component
+      # shellcheck disable=SC2254
+      if [[ "$name" == $p ]]; then
+        return 0
+      fi
+      # Also try matching against the full relative path
+      # shellcheck disable=SC2254
+      if [[ "$relpath" == $p || "$relpath" == */$p ]]; then
+        return 0
+      fi
+    fi
+  done
+
+  return 1
+}
+
+sync_directory() {
+  local src="$1"
+  local mirror="$2"
+  local src_abs
+  src_abs=$(realpath "$src")
+
+  log "Syncing $src_abs -> $mirror"
+
+  # Load gitignore from source root
+  load_gitignore "$src_abs/.gitignore"
+
+  # Create mirror root
+  [[ -d "$mirror" ]] || mkdir -p "$mirror"
+
+  # Walk the source tree
+  while IFS= read -r -d '' entry; do
+    local relpath="${entry#"$src_abs/"}"
+
+    if [[ -d "$entry" ]]; then
+      # Check if directory should be ignored
+      if should_ignore "$relpath" true; then
+        continue
+      fi
+
+      # Create real directory in mirror
+      local mirror_dir="$mirror/$relpath"
+      if [[ ! -d "$mirror_dir" ]]; then
+        mkdir -p "$mirror_dir"
+        log "  dir:  $relpath"
+      fi
+    elif [[ -f "$entry" ]]; then
+      # Check if file should be ignored
+      if should_ignore "$relpath" false; then
+        continue
+      fi
+
+      # Create symlink in mirror
+      local mirror_link="$mirror/$relpath"
+      if [[ ! -e "$mirror_link" ]]; then
+        # Ensure parent dir exists
+        local parent
+        parent=$(dirname "$mirror_link")
+        [[ -d "$parent" ]] || mkdir -p "$parent"
+        ln -s "$entry" "$mirror_link"
+        log "  link: $relpath -> $entry"
+      fi
+    fi
+  done < <(find "$src_abs" -mindepth 1 \
+    -path "$src_abs/.git" -prune -o \
+    -path "$src_abs/.claude" -prune -o \
+    -path "$src_abs/.scratch" -prune -o \
+    -print0 | sort -z)
+
+  log "Sync complete."
+}
+
+# --- Main ---
+[[ $# -lt 2 ]] && usage
+
+SOURCE_DIR="$1"
+MIRROR_DIR="$2"
+
+[[ -d "$SOURCE_DIR" ]] || err "Source directory does not exist: $SOURCE_DIR"
+
+sync_directory "$SOURCE_DIR" "$MIRROR_DIR"

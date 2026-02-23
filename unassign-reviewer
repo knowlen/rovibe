@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="unassign-reviewer"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: unassign-reviewer <agent-user> <project-dir> [--purge-scratch]
+
+Removes an agent's reviewer assignment for a project:
+  1. Removes symlinks from the mirror
+  2. Removes .claude/ dir and .scratch symlink from mirror
+  3. Removes empty directories bottom-up
+  4. Removes the mirror root directory
+
+Options:
+  --purge-scratch   Also remove the agent's .scratch/reviews/<agent> dir from the project
+EOF
+  exit 1
+}
+
+# --- Parse arguments ---
+AGENT_USER=""
+PROJECT_DIR=""
+PURGE_SCRATCH=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --purge-scratch)
+      PURGE_SCRATCH=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      if [[ -z "$AGENT_USER" ]]; then
+        AGENT_USER="$1"
+      elif [[ -z "$PROJECT_DIR" ]]; then
+        PROJECT_DIR="$1"
+      else
+        err "Unexpected argument: $1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+[[ -n "$AGENT_USER" ]] || err "Missing agent username"
+[[ -n "$PROJECT_DIR" ]] || err "Missing project directory"
+
+PROJECT_DIR=$(realpath "$PROJECT_DIR")
+PROJECT_NAME=$(basename "$PROJECT_DIR")
+MIRROR_DIR="/home/$AGENT_USER/mirrors/$PROJECT_NAME"
+
+if [[ ! -d "$MIRROR_DIR" ]]; then
+  log "Mirror does not exist at $MIRROR_DIR, nothing to unassign."
+  exit 0
+fi
+
+# --- Step 1: Remove symlinks in mirror ---
+log "Removing symlinks from mirror..."
+while IFS= read -r -d '' link; do
+  rm "$link"
+done < <(find "$MIRROR_DIR" -type l -print0 2>/dev/null)
+
+# --- Step 2: Remove .claude directory from mirror ---
+if [[ -d "$MIRROR_DIR/.claude" ]]; then
+  log "Removing .claude/ from mirror..."
+  rm -rf "$MIRROR_DIR/.claude"
+fi
+
+# --- Step 3: Remove empty directories bottom-up ---
+log "Removing empty directories..."
+# Find empty dirs deepest-first and remove them
+while IFS= read -r -d '' dir; do
+  rmdir "$dir" 2>/dev/null || true
+done < <(find "$MIRROR_DIR" -mindepth 1 -type d -empty -print0 2>/dev/null | sort -rz)
+
+# --- Step 4: Remove mirror root ---
+if [[ -d "$MIRROR_DIR" ]]; then
+  # One more pass — there may be nested empties now
+  find "$MIRROR_DIR" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+  rmdir "$MIRROR_DIR" 2>/dev/null || log "WARN: Mirror dir not empty, not removed: $MIRROR_DIR"
+fi
+
+# --- Step 5: Optionally purge scratch ---
+if $PURGE_SCRATCH; then
+  SCRATCH_DIR="$PROJECT_DIR/.scratch/reviews/$AGENT_USER"
+  if [[ -d "$SCRATCH_DIR" ]]; then
+    log "Purging scratch directory: $SCRATCH_DIR"
+    sudo rm -rf "$SCRATCH_DIR"
+  fi
+fi
+
+log "Reviewer '$AGENT_USER' unassigned from '$PROJECT_NAME'."

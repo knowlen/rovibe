@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="create-agent"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: create-agent <username> <role> [--delete]
+
+Creates (or deletes) an OS-level isolated agent identity.
+
+Arguments:
+  username   Agent username (e.g. agent.ro)
+  role       Agent role (e.g. reviewer) — informational only
+  --delete   Remove the agent user and its home directory
+
+The agent gets:
+  - A restricted PATH (/opt/agents/bin only)
+  - Membership in the 'agents' group
+  - A home directory at /home/<username>
+  - Allowlisted symlinks in /opt/agents/bin/
+EOF
+  exit 1
+}
+
+# --- Allowlisted binaries that agents may use ---
+ALLOWLIST=(
+  # Core utilities
+  bash cat cp cut date dirname env find grep head id ln ls
+  mkdir mktemp readlink realpath rmdir sed sleep sort stat
+  tail tee touch tr uname wc which xargs basename
+
+  # Git
+  git
+
+  # Editors / pagers
+  less more
+
+  # Developer tools
+  python3 pip3 claude
+
+  # Networking (for API access)
+  curl wget
+
+  # JSON / text processing
+  jq awk
+
+  # File inspection
+  file diff
+)
+
+AGENTS_BIN="/opt/agents/bin"
+
+populate_agents_bin() {
+  log "Populating $AGENTS_BIN with allowlisted symlinks..."
+  sudo mkdir -p "$AGENTS_BIN"
+  sudo chown root:root "$AGENTS_BIN"
+  sudo chmod 755 "$AGENTS_BIN"
+
+  # Clean out everything first — removes stale/broken symlinks from prior runs
+  sudo find "$AGENTS_BIN" -maxdepth 1 -type l -delete 2>/dev/null || true
+
+  # Build a lookup set of allowlisted names
+  declare -A allowed
+  for cmd in "${ALLOWLIST[@]}"; do
+    allowed[$cmd]=1
+  done
+
+  for cmd in "${ALLOWLIST[@]}"; do
+    target="$AGENTS_BIN/$cmd"
+    src=$(command -v "$cmd" 2>/dev/null || true)
+    # Skip shell builtins — command -v returns the bare name, not an absolute path
+    if [[ -n "$src" && "$src" == /* ]]; then
+      sudo ln -sf "$src" "$target"
+      log "  linked $cmd -> $src"
+    else
+      log "  SKIP $cmd (not found or is a shell builtin)"
+    fi
+  done
+}
+
+create_agent() {
+  local username="$1"
+  local role="$2"
+  local home="/home/$username"
+  local os
+  os=$(uname -s)
+
+  # Ensure agents group exists
+  if ! getent group agents >/dev/null 2>&1; then
+    log "Creating 'agents' group..."
+    sudo groupadd agents
+  fi
+
+  # Create user (idempotent)
+  if id "$username" >/dev/null 2>&1; then
+    log "User '$username' already exists, ensuring group membership..."
+  else
+    log "Creating user '$username'..."
+    case "$os" in
+      Linux)
+        sudo useradd -m -g agents -s /bin/bash "$username"
+        ;;
+      Darwin)
+        # macOS user creation
+        local last_id
+        last_id=$(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1)
+        local new_id=$((last_id + 1))
+        sudo dscl . -create "/Users/$username"
+        sudo dscl . -create "/Users/$username" UserShell /bin/bash
+        sudo dscl . -create "/Users/$username" UniqueID "$new_id"
+        sudo dscl . -create "/Users/$username" PrimaryGroupID "$(dscl . -read /Groups/agents PrimaryGroupID | awk '{print $2}')"
+        sudo dscl . -create "/Users/$username" NFSHomeDirectory "$home"
+        sudo mkdir -p "$home"
+        sudo chown "$username":agents "$home"
+        ;;
+      *)
+        err "Unsupported OS: $os"
+        ;;
+    esac
+  fi
+
+  # Ensure user is in agents group
+  case "$os" in
+    Linux)
+      sudo usermod -aG agents "$username" 2>/dev/null || true
+      ;;
+    Darwin)
+      sudo dseditgroup -o edit -a "$username" -t user agents 2>/dev/null || true
+      ;;
+  esac
+
+  # Populate /opt/agents/bin
+  populate_agents_bin
+
+  # Write .bashrc with restricted PATH
+  local bashrc="$home/.bashrc"
+  log "Writing restricted .bashrc..."
+  sudo tee "$bashrc" >/dev/null <<'BASHRC'
+# rovibe agent shell — restricted PATH
+export PATH="/opt/agents/bin"
+export AGENT_ROLE="__ROLE__"
+
+# Prevent user from resetting PATH
+readonly PATH
+BASHRC
+  sudo sed -i "s/__ROLE__/$role/" "$bashrc"
+  sudo chown "$username":agents "$bashrc"
+  sudo chmod 644 "$bashrc"
+
+  # Write .bash_profile that sources .bashrc (for login shells)
+  local bash_profile="$home/.bash_profile"
+  log "Writing .bash_profile..."
+  sudo tee "$bash_profile" >/dev/null <<'PROFILE'
+# rovibe agent login shell — source .bashrc for restricted PATH
+if [[ -f "$HOME/.bashrc" ]]; then
+  source "$HOME/.bashrc"
+fi
+PROFILE
+  sudo chown "$username":agents "$bash_profile"
+  sudo chmod 644 "$bash_profile"
+
+  # Set limits.conf entry (Linux only) — limit resource usage
+  if [[ "$os" == "Linux" ]]; then
+    sudo mkdir -p /etc/security/limits.d
+    local limits_file="/etc/security/limits.d/$username.conf"
+    if [[ ! -f "$limits_file" ]]; then
+      log "Writing limits.conf..."
+      sudo tee "$limits_file" >/dev/null <<LIMITS
+# rovibe agent limits for $username
+$username  hard  nproc   256
+$username  hard  nofile  4096
+LIMITS
+    fi
+  fi
+
+  log "Agent '$username' created with role '$role'."
+  log "Home: $home"
+  log "PATH: /opt/agents/bin"
+}
+
+delete_agent() {
+  local username="$1"
+  local home="/home/$username"
+  local os
+  os=$(uname -s)
+
+  if ! id "$username" >/dev/null 2>&1; then
+    log "User '$username' does not exist, nothing to delete."
+    return 0
+  fi
+
+  log "Deleting agent '$username'..."
+
+  # Kill any running processes
+  sudo pkill -u "$username" 2>/dev/null || true
+  sleep 1
+
+  case "$os" in
+    Linux)
+      sudo userdel -r "$username" 2>/dev/null || true
+      ;;
+    Darwin)
+      sudo dscl . -delete "/Users/$username" 2>/dev/null || true
+      sudo rm -rf "$home"
+      ;;
+  esac
+
+  # Remove limits.conf
+  sudo rm -f "/etc/security/limits.d/$username.conf"
+
+  log "Agent '$username' deleted."
+}
+
+# --- Main ---
+[[ $# -lt 2 ]] && usage
+
+USERNAME="$1"
+ROLE="$2"
+DELETE_FLAG="${3:-}"
+
+if [[ "$DELETE_FLAG" == "--delete" ]]; then
+  delete_agent "$USERNAME"
+else
+  create_agent "$USERNAME" "$ROLE"
+fi

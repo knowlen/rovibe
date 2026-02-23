@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="assign-reviewer"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: assign-reviewer <agent-user> <project-dir> [--claude-md <path>]
+
+Assigns an agent as a reviewer for a project:
+  1. Sets agents group + read-only perms on project
+  2. Creates symlink mirror of the project
+  3. Creates .scratch/ workspace with write access
+  4. Writes .claude/settings.local.json with deny rules
+  5. Updates project .gitignore
+
+Options:
+  --claude-md <path>   Copy a CLAUDE.md file into the mirror
+EOF
+  exit 1
+}
+
+# --- Parse arguments ---
+AGENT_USER=""
+PROJECT_DIR=""
+CLAUDE_MD=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --claude-md)
+      [[ $# -ge 2 ]] || err "--claude-md requires a path argument"
+      CLAUDE_MD="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      if [[ -z "$AGENT_USER" ]]; then
+        AGENT_USER="$1"
+      elif [[ -z "$PROJECT_DIR" ]]; then
+        PROJECT_DIR="$1"
+      else
+        err "Unexpected argument: $1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+[[ -n "$AGENT_USER" ]] || err "Missing agent username"
+[[ -n "$PROJECT_DIR" ]] || err "Missing project directory"
+[[ -d "$PROJECT_DIR" ]] || err "Project directory does not exist: $PROJECT_DIR"
+id "$AGENT_USER" >/dev/null 2>&1 || err "Agent user '$AGENT_USER' does not exist"
+
+PROJECT_DIR=$(realpath "$PROJECT_DIR")
+PROJECT_NAME=$(basename "$PROJECT_DIR")
+MIRROR_DIR="/home/$AGENT_USER/mirrors/$PROJECT_NAME"
+SCRATCH_DIR="$PROJECT_DIR/.scratch/reviews/$AGENT_USER"
+
+# --- Step 1: Set group permissions on project ---
+log "Setting agents group permissions on $PROJECT_DIR..."
+
+# Set group ownership to agents
+sudo chgrp -R agents "$PROJECT_DIR"
+
+# Set group read + execute on dirs, group read on files, no group write
+sudo chmod -R g+rX,g-w "$PROJECT_DIR"
+
+# Detect and handle venvs — they need execute bits on binaries
+while IFS= read -r -d '' venv_dir; do
+  if [[ -d "$venv_dir/bin" ]]; then
+    log "  Preserving execute bits in venv: $venv_dir/bin"
+    sudo chmod -R g+rX "$venv_dir/bin"
+  fi
+done < <(find "$PROJECT_DIR" -maxdepth 2 -name "pyvenv.cfg" -printf '%h\0' 2>/dev/null || true)
+
+# --- Step 2: Create symlink mirror ---
+log "Creating symlink mirror at $MIRROR_DIR..."
+sudo -u "$AGENT_USER" mkdir -p "$(dirname "$MIRROR_DIR")"
+
+# Run sync-mirror — find it relative to this script or in PATH
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SYNC_MIRROR=""
+if [[ -x "$SCRIPT_DIR/sync-mirror" ]]; then
+  SYNC_MIRROR="$SCRIPT_DIR/sync-mirror"
+elif command -v sync-mirror >/dev/null 2>&1; then
+  SYNC_MIRROR="sync-mirror"
+else
+  err "sync-mirror not found"
+fi
+
+sudo -u "$AGENT_USER" "$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR"
+
+# --- Step 3: Create .scratch workspace ---
+log "Creating .scratch workspace at $SCRATCH_DIR..."
+sudo mkdir -p "$SCRATCH_DIR"
+# Sticky bit + setgid: files created here inherit group, only owner can delete
+sudo chmod 3770 "$SCRATCH_DIR"
+sudo chown "$AGENT_USER":agents "$SCRATCH_DIR"
+
+# Ensure parent .scratch/reviews dir exists with proper perms
+sudo mkdir -p "$PROJECT_DIR/.scratch/reviews"
+sudo chown root:agents "$PROJECT_DIR/.scratch" "$PROJECT_DIR/.scratch/reviews"
+sudo chmod 3775 "$PROJECT_DIR/.scratch" "$PROJECT_DIR/.scratch/reviews"
+
+# Symlink agent's scratch dir into the mirror
+local_scratch_link="$MIRROR_DIR/.scratch"
+if [[ ! -L "$local_scratch_link" ]]; then
+  sudo -u "$AGENT_USER" ln -s "$PROJECT_DIR/.scratch" "$local_scratch_link"
+  log "  Symlinked .scratch into mirror"
+fi
+
+# --- Step 4: Write .claude/settings.local.json ---
+log "Writing .claude/settings.local.json in mirror..."
+CLAUDE_DIR="$MIRROR_DIR/.claude"
+sudo -u "$AGENT_USER" mkdir -p "$CLAUDE_DIR"
+
+sudo -u "$AGENT_USER" tee "$CLAUDE_DIR/settings.local.json" >/dev/null <<SETTINGS
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "View",
+      "Read"
+    ],
+    "deny": [
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git tag*)",
+      "Bash(git merge*)",
+      "Bash(git rebase*)",
+      "Bash(git checkout*)",
+      "Bash(git reset*)",
+      "Bash(git stash*)",
+      "Bash(git clean*)",
+      "Bash(git remote*)",
+      "Bash(sudo *)"
+    ]
+  }
+}
+SETTINGS
+
+# --- Step 5: Copy CLAUDE.md if requested ---
+if [[ -n "$CLAUDE_MD" ]]; then
+  [[ -f "$CLAUDE_MD" ]] || err "CLAUDE.md file not found: $CLAUDE_MD"
+  log "Copying CLAUDE.md into mirror..."
+  sudo -u "$AGENT_USER" cp "$CLAUDE_MD" "$MIRROR_DIR/CLAUDE.md"
+fi
+
+# --- Step 6: Update project .gitignore ---
+GITIGNORE="$PROJECT_DIR/.gitignore"
+
+add_to_gitignore() {
+  local entry="$1"
+  if [[ -f "$GITIGNORE" ]]; then
+    if ! grep -qxF "$entry" "$GITIGNORE"; then
+      echo "$entry" | sudo tee -a "$GITIGNORE" >/dev/null
+      log "  Added '$entry' to .gitignore"
+    fi
+  else
+    echo "$entry" | sudo tee "$GITIGNORE" >/dev/null
+    log "  Created .gitignore with '$entry'"
+  fi
+}
+
+add_to_gitignore ".scratch/"
+
+log "Reviewer '$AGENT_USER' assigned to '$PROJECT_NAME'."
+log "Mirror: $MIRROR_DIR"
+log "Scratch: $SCRATCH_DIR"

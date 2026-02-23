@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="list-reviewers"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: list-reviewers <project-dir>
+
+Lists all agent users from the 'agents' group and shows whether
+they have an active mirror for the given project.
+
+Output columns:
+  USER     — agent username
+  STATUS   — assigned / unassigned
+  MIRROR   — path to mirror directory (if assigned)
+EOF
+  exit 1
+}
+
+[[ $# -ge 1 ]] || usage
+PROJECT_DIR="$1"
+[[ -d "$PROJECT_DIR" ]] || err "Project directory does not exist: $PROJECT_DIR"
+
+PROJECT_DIR=$(realpath "$PROJECT_DIR")
+PROJECT_NAME=$(basename "$PROJECT_DIR")
+
+# Get agents group members
+if ! getent group agents >/dev/null 2>&1; then
+  err "Group 'agents' does not exist"
+fi
+
+MEMBERS_LINE=$(getent group agents | cut -d: -f4)
+
+if [[ -z "$MEMBERS_LINE" ]]; then
+  log "No members in 'agents' group."
+  exit 0
+fi
+
+# Split comma-separated members
+IFS=',' read -ra MEMBERS <<< "$MEMBERS_LINE"
+
+# Print header
+printf "%-20s %-12s %s\n" "USER" "STATUS" "MIRROR"
+printf "%-20s %-12s %s\n" "----" "------" "------"
+
+for user in "${MEMBERS[@]}"; do
+  mirror="/home/$user/mirrors/$PROJECT_NAME"
+  if [[ -d "$mirror" ]]; then
+    printf "%-20s %-12s %s\n" "$user" "assigned" "$mirror"
+  else
+    printf "%-20s %-12s %s\n" "$user" "unassigned" "-"
+  fi
+done
