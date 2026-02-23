@@ -1,5 +1,5 @@
 pkgname=rovibe
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc='OS-level isolated agent identities for AI coding agents'
 arch=(any)
