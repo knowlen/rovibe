@@ -1,4 +1,6 @@
 ![rovibe architechture](docs/rovibe-diag.svg)
+[![AUR version](https://img.shields.io/aur/version/rovibe)](https://aur.archlinux.org/packages/rovibe)
+[![License: WTFPL](https://img.shields.io/badge/license-WTFPL-brightgreen)](LICENSE)
 
 This tool provisions isolated OS users for Claude Code sessions. Like virtual environments, 
 but enforced by the kernel instead of the runtime.
