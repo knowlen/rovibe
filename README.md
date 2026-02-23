@@ -28,8 +28,14 @@ Agent-to-agent message passing via prompt injection is planned.
 
 ## Installation
 
-### Arch Linux
+### Arch Linux ([AUR](https://aur.archlinux.org/packages/rovibe))
 ```bash
+yay -S rovibe
+```
+Or manually:
+```bash
+git clone https://aur.archlinux.org/rovibe.git
+cd rovibe
 makepkg -si
 ```
 
