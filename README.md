@@ -8,9 +8,9 @@
 ![rovibe architechture](docs/rovibe-diag.svg)
 
 Modern LLM coding agents can trivially circumvent prompt-based restrictions and config files 
-like `.claude/settings.json`. rovibe provisions real OS users with restricted PATHs and read-only 
-symlink mirrors of a project, This tool provisions isolated OS users for Claude Code sessions. 
-Like virtual environments, but enforced by the kernel instead of the runtime.
+like `.claude/settings.json`. rovibe provisions OS user accounts with restricted PATHs and read-only 
+symlink mirrors of a project for isolated Claude Code sessions (eg; "reviewer" agents). 
+Sort of like virtual environments, but enforced by the kernel instead of the runtime.
 
 
 
