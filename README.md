@@ -1,6 +1,8 @@
 <div align="center">
+
 [![AUR version](https://img.shields.io/aur/version/rovibe)](https://aur.archlinux.org/packages/rovibe)
 [![License: WTFPL](https://img.shields.io/badge/license-WTFPL-brightgreen)](LICENSE)
+
 </div>
 
 ![rovibe architechture](docs/rovibe-diag.svg)
