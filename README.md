@@ -28,7 +28,7 @@ Agent-to-agent message passing via prompt injection is planned.
 
 ## Installation
 
-### Arch Linux ([AUR](https://aur.archlinux.org/packages/rovibe))
+### Arch Linux [![AUR version](https://img.shields.io/aur/version/rovibe)](https://aur.archlinux.org/packages/rovibe)
 ```bash
 yay -S rovibe
 ```
