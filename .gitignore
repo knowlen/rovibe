@@ -18,7 +18,10 @@ scripts/
 .DS_Store
 Thumbs.db
 
-# Arch packaging artifacts
+# Arch packaging
+PKGBUILD
+.SRCINFO
+rovibe.install
 src/
 pkg/
 *.pkg.tar.*
