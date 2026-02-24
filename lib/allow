@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="allow"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: allow <agent> <cmd> [<cmd> ...]
+
+Adds commands to an agent's per-agent bin by symlinking from
+approved system locations.
+
+Commands must:
+  - Not contain '/' (bare names only)
+  - Resolve to an absolute path via command -v
+  - Live under an approved prefix (/usr/bin, /usr/local/bin, /bin, /usr/sbin, /sbin)
+EOF
+  exit 1
+}
+
+[[ $# -ge 2 ]] || usage
+
+if [[ $EUID -ne 0 ]]; then
+  exec sudo "$0" "$@"
+fi
+
+AGENT_USER="$1"; shift
+id "$AGENT_USER" >/dev/null 2>&1 || err "Agent user '$AGENT_USER' does not exist"
+
+BIN_DIR="/opt/rovibe/$AGENT_USER/bin"
+[[ -d "$BIN_DIR" ]] || err "Bin directory does not exist: $BIN_DIR"
+
+APPROVED_PREFIXES=(/usr/bin /usr/local/bin /bin /usr/sbin /sbin)
+
+for cmd in "$@"; do
+  [[ "$cmd" == */* ]] && { log "SKIP $cmd: name must not contain '/'"; continue; }
+  real=$(command -v "$cmd" 2>/dev/null) || { log "SKIP $cmd: not found in PATH"; continue; }
+  [[ "$real" == /* ]] || { log "SKIP $cmd: not an absolute path"; continue; }
+  canon=$(realpath "$real")
+  approved=false
+  for prefix in "${APPROVED_PREFIXES[@]}"; do
+    [[ "$canon" == "$prefix/"* ]] && { approved=true; break; }
+  done
+  $approved || { log "SKIP $cmd: '$canon' not in approved location"; continue; }
+  ln -sf "$canon" "$BIN_DIR/$cmd"
+  log "  allowed $cmd -> $canon"
+done
+
+# Mark profile as custom if allowlist was manually modified
+profile_file="/opt/rovibe/$AGENT_USER/.rovibe-profile"
+if [[ -f "$profile_file" ]]; then
+  current=$(<"$profile_file")
+  case "$current" in
+    read-only|standard|network-isolated)
+      echo "custom" > "$profile_file"
+      ;;
+  esac
+fi

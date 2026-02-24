@@ -12,15 +12,17 @@ Usage: rovibe uninstall [--purge]
 Removes rovibe from the system.
 
 Options:
-  --purge   Also remove /opt/agents/bin/ and the 'agents' group
+  --purge   Auto-delete all agents, remove /opt/rovibe/, and the 'agents' group
 
-Will refuse to uninstall if any agent users still exist in the
-'agents' group. Delete all agents first with `rovibe delete agent <name>`.
+Without --purge, will refuse to uninstall if any agent users still exist
+in the 'agents' group. Delete them first or use --purge to auto-delete.
 EOF
   exit 1
 }
 
-[[ $EUID -eq 0 ]] || err "Must be run as root"
+if [[ $EUID -ne 0 ]]; then
+  exec sudo "$0" "$@"
+fi
 
 PURGE=false
 for arg in "$@"; do
@@ -31,12 +33,21 @@ for arg in "$@"; do
   esac
 done
 
-# Block if any agent users still exist
+# Handle existing agent users
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if getent group agents >/dev/null 2>&1; then
   MEMBERS_LINE=$(getent group agents | cut -d: -f4)
   if [[ -n "$MEMBERS_LINE" ]]; then
-    err "Cannot uninstall: agents group still has members: $MEMBERS_LINE
-Delete all agents first with: rovibe delete agent <name>"
+    if $PURGE; then
+      log "Auto-deleting agent users: $MEMBERS_LINE"
+      for user in $(echo "$MEMBERS_LINE" | tr ',' ' '); do
+        "$SCRIPT_DIR/create-agent" "$user" --delete
+      done
+    else
+      err "Cannot uninstall: agents group still has members: $MEMBERS_LINE
+Delete all agents first with: rovibe delete <name>
+Or use --purge to auto-delete all agents."
+    fi
   fi
 fi
 
@@ -57,13 +68,18 @@ else
 fi
 
 if $PURGE; then
-  # Remove agents bin directory
-  if [[ -d /opt/agents/bin ]]; then
-    rm -rf /opt/agents/bin
-    rmdir /opt/agents 2>/dev/null || true
-    log "Removed /opt/agents/bin/"
+  # Remove per-agent bin directories
+  if [[ -d /opt/rovibe ]]; then
+    rm -rf /opt/rovibe
+    log "Removed /opt/rovibe/"
   else
-    log "/opt/agents/bin/ not found, skipping"
+    log "/opt/rovibe/ not found, skipping"
+  fi
+
+  # Remove legacy /opt/agents if it exists
+  if [[ -d /opt/agents ]]; then
+    rm -rf /opt/agents
+    log "Removed legacy /opt/agents/"
   fi
 
   # Remove agents group

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="restrict"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: restrict <agent> <cmd> [<cmd> ...]
+
+Removes commands from an agent's per-agent bin, revoking access.
+
+Only removes symlinks — refuses to delete non-symlink entries.
+EOF
+  exit 1
+}
+
+[[ $# -ge 2 ]] || usage
+
+if [[ $EUID -ne 0 ]]; then
+  exec sudo "$0" "$@"
+fi
+
+AGENT_USER="$1"; shift
+BIN_DIR="/opt/rovibe/$AGENT_USER/bin"
+[[ -d "$BIN_DIR" ]] || err "Bin directory does not exist: $BIN_DIR"
+
+for cmd in "$@"; do
+  target="$BIN_DIR/$cmd"
+  if [[ -L "$target" ]]; then
+    rm "$target"
+    log "  restricted $cmd"
+  elif [[ -e "$target" ]]; then
+    log "SKIP $cmd: exists but is not a symlink — not removing"
+  else
+    log "SKIP $cmd: not in agent's bin"
+  fi
+done
+
+# Mark profile as custom if allowlist was manually modified
+profile_file="/opt/rovibe/$AGENT_USER/.rovibe-profile"
+if [[ -f "$profile_file" ]]; then
+  current=$(<"$profile_file")
+  case "$current" in
+    read-only|standard|network-isolated)
+      echo "custom" > "$profile_file"
+      ;;
+  esac
+fi

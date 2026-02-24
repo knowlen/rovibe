@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT="list"
+log()  { echo "[$SCRIPT] $*"; }
+err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: list [<agent> | <project>]
+
+No args:       list all agents and their assigned projects.
+Agent name:    list that agent's assignments across all projects.
+Project dir:   list agents assigned to that project.
+EOF
+  exit 1
+}
+
+# --- Helpers ---
+
+get_assignment_role() {
+  local role_file="$1/.rovibe-role"
+  if [[ -f "$role_file" ]]; then
+    cat "$role_file"
+  else
+    echo "unknown"
+  fi
+}
+
+get_mirror_source() {
+  local source_file="$1/.rovibe-source"
+  if [[ -f "$source_file" ]]; then
+    cat "$source_file"
+  else
+    echo "-"
+  fi
+}
+
+get_agent_profile() {
+  local agent="$1"
+  local pf="/opt/rovibe/$agent/.rovibe-profile"
+  if [[ -f "$pf" ]]; then cat "$pf"; else echo "standard"; fi
+}
+
+get_last_active() {
+  local source_dir="$1"
+  local agent="$2"
+  local scratch="$source_dir/.scratch/reviews/$agent"
+  local ts
+  ts=$(stat -c "%Y" "$scratch" 2>/dev/null) || ts=""
+  if [[ -n "$ts" ]]; then
+    date -d "@$ts" "+%m-%d-%Y %H:%M" 2>/dev/null || echo "-"
+  else
+    echo "-"
+  fi
+}
+
+# --- Parse arguments ---
+
+PROJECT_DIR=""
+AGENT_USER=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      ;;
+    *)
+      # Classify bare args by type.
+      # ~* in [[ ]] matches a literal tilde — correct for detection;
+      # eval echo handles actual expansion in the -d fallback.
+      if [[ "$1" == /* || "$1" == ~* || "$1" == ./* || "$1" == */* ]] \
+         || [[ -d "$(eval echo "$1" 2>/dev/null)" ]]; then
+        [[ -z "$PROJECT_DIR" ]] || err "ambiguous: two paths provided"
+        PROJECT_DIR="$1"
+      elif id "$1" >/dev/null 2>&1 && id -nG "$1" 2>/dev/null | grep -qw agents; then
+        [[ -z "$AGENT_USER" ]] || err "ambiguous: two agent users provided"
+        AGENT_USER="$1"
+      else
+        err "cannot infer argument: $1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+[[ -z "$AGENT_USER" ]] || [[ -z "$PROJECT_DIR" ]] \
+  || err "specify either an agent or a project, not both"
+
+# Get agents group members
+if ! getent group agents >/dev/null 2>&1; then
+  err "Group 'agents' does not exist"
+fi
+
+MEMBERS_LINE=$(getent group agents | cut -d: -f4)
+MEMBERS=()
+if [[ -n "$MEMBERS_LINE" ]]; then
+  IFS=',' read -ra MEMBERS <<< "$MEMBERS_LINE"
+fi
+
+if [[ -n "$AGENT_USER" ]]; then
+  # --- Per-agent view ---
+  profile=$(get_agent_profile "$AGENT_USER")
+  printf "AGENT: %s\n" "$AGENT_USER"
+  printf "PROFILE: %s\n" "$profile"
+  printf "%-20s %-12s %-20s %s\n" "PROJECT" "ROLE" "LAST ACTIVE" "SOURCE"
+  printf "%-20s %-12s %-20s %s\n" "-------" "----" "-----------" "------"
+
+  mirrors_dir="/home/$AGENT_USER/mirrors"
+  if [[ -d "$mirrors_dir" ]]; then
+    while IFS= read -r -d '' d; do
+      name=$(basename "$d")
+      role=$(get_assignment_role "$d")
+      source_dir=$(get_mirror_source "$d")
+      last_active=$(get_last_active "$source_dir" "$AGENT_USER")
+      printf "%-20s %-12s %-20s %s\n" "$name" "$role" "$last_active" "$source_dir"
+    done < <(find "$mirrors_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | sort -z)
+  fi
+
+elif [[ -n "$PROJECT_DIR" ]]; then
+  # --- Per-project view ---
+  [[ -d "$PROJECT_DIR" ]] || err "Project directory does not exist: $PROJECT_DIR"
+  PROJECT_DIR=$(realpath "$PROJECT_DIR")
+  PROJECT_NAME=$(basename "$PROJECT_DIR")
+
+  printf "PROJECT: %s  (%s)\n" "$PROJECT_NAME" "$PROJECT_DIR"
+  printf "%-20s %-12s %s\n" "AGENT" "ROLE" "LAST ACTIVE"
+  printf "%-20s %-12s %s\n" "-----" "----" "-----------"
+
+  for user in "${MEMBERS[@]}"; do
+    mirror="/home/$user/mirrors/$PROJECT_NAME"
+    if [[ -d "$mirror" ]]; then
+      role=$(get_assignment_role "$mirror")
+      last_active=$(get_last_active "$PROJECT_DIR" "$user")
+      printf "%-20s %-12s %s\n" "$user" "$role" "$last_active"
+    fi
+  done
+
+else
+  # --- All-agents view ---
+  printf "%-20s %-20s %s\n" "AGENT" "PROFILE" "PROJECTS"
+  printf "%-20s %-20s %s\n" "-----" "-------" "--------"
+
+  for user in "${MEMBERS[@]}"; do
+    mirrors_dir="/home/$user/mirrors"
+    projects=""
+    if [[ -d "$mirrors_dir" ]]; then
+      while IFS= read -r -d '' d; do
+        name=$(basename "$d")
+        role=$(get_assignment_role "$d")
+        entry="$name ($role)"
+        if [[ -n "$projects" ]]; then
+          projects="$projects, $entry"
+        else
+          projects="$entry"
+        fi
+      done < <(find "$mirrors_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | sort -z)
+    fi
+    profile=$(get_agent_profile "$user")
+    printf "%-20s %-20s %s\n" "$user" "$profile" "${projects:--}"
+  done
+fi

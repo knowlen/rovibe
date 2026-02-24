@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT="assign-reviewer"
+SCRIPT="assign"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage: assign-reviewer <agent-user> <project-dir> [--claude-md <path>]
+Usage: assign <agent> <project> [--role <role>] [--claude-md <path>]
+       (args are order-independent — inferred by type)
 
-Assigns an agent as a reviewer for a project:
+Assigns an agent to a project:
   1. Sets agents group + read-only perms on project
   2. Creates symlink mirror of the project
   3. Creates .scratch/ workspace with write access
@@ -17,6 +18,7 @@ Assigns an agent as a reviewer for a project:
   5. Updates project .gitignore
 
 Options:
+  --role <role>        Assignment role (default: reviewer)
   --claude-md <path>   Copy a CLAUDE.md file into the mirror
 EOF
   exit 1
@@ -26,9 +28,16 @@ EOF
 AGENT_USER=""
 PROJECT_DIR=""
 CLAUDE_MD=""
+ROLE="reviewer"
+ORIG_ARGS=("$@")
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --role)
+      [[ $# -ge 2 ]] || err "--role requires a value"
+      ROLE="$2"
+      shift 2
+      ;;
     --claude-md)
       [[ $# -ge 2 ]] || err "--claude-md requires a path argument"
       CLAUDE_MD="$2"
@@ -38,12 +47,18 @@ while [[ $# -gt 0 ]]; do
       usage
       ;;
     *)
-      if [[ -z "$AGENT_USER" ]]; then
-        AGENT_USER="$1"
-      elif [[ -z "$PROJECT_DIR" ]]; then
+      # Classify bare args by type, not position.
+      # ~* in [[ ]] matches a literal tilde — correct for detection;
+      # eval echo handles actual expansion in the -d fallback.
+      if [[ "$1" == /* || "$1" == ~* || "$1" == ./* || "$1" == */* ]] \
+         || [[ -d "$(eval echo "$1" 2>/dev/null)" ]]; then
+        [[ -z "$PROJECT_DIR" ]] || err "ambiguous: two paths provided"
         PROJECT_DIR="$1"
+      elif id "$1" >/dev/null 2>&1 && id -nG "$1" 2>/dev/null | grep -qw agents; then
+        [[ -z "$AGENT_USER" ]] || err "ambiguous: two agent users provided"
+        AGENT_USER="$1"
       else
-        err "Unexpected argument: $1"
+        err "cannot infer argument: $1"
       fi
       shift
       ;;
@@ -54,6 +69,10 @@ done
 [[ -n "$PROJECT_DIR" ]] || err "Missing project directory"
 [[ -d "$PROJECT_DIR" ]] || err "Project directory does not exist: $PROJECT_DIR"
 id "$AGENT_USER" >/dev/null 2>&1 || err "Agent user '$AGENT_USER' does not exist"
+
+if [[ $EUID -ne 0 ]]; then
+  exec sudo "$0" "${ORIG_ARGS[@]}"
+fi
 
 PROJECT_DIR=$(realpath "$PROJECT_DIR")
 PROJECT_NAME=$(basename "$PROJECT_DIR")
@@ -92,7 +111,13 @@ else
   err "sync-mirror not found"
 fi
 
-sudo -u "$AGENT_USER" "$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR"
+"$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR"
+chown -h "$AGENT_USER":agents "$MIRROR_DIR"
+
+# Record source path and role so list can display them
+echo "$PROJECT_DIR" > "$MIRROR_DIR/.rovibe-source"
+echo "$ROLE" > "$MIRROR_DIR/.rovibe-role"
+chown "$AGENT_USER":agents "$MIRROR_DIR/.rovibe-source" "$MIRROR_DIR/.rovibe-role"
 
 # --- Step 3: Create .scratch workspace ---
 log "Creating .scratch workspace at $SCRATCH_DIR..."
@@ -169,6 +194,6 @@ add_to_gitignore() {
 
 add_to_gitignore ".scratch/"
 
-log "Reviewer '$AGENT_USER' assigned to '$PROJECT_NAME'."
+log "Agent '$AGENT_USER' assigned to '$PROJECT_NAME'."
 log "Mirror: $MIRROR_DIR"
 log "Scratch: $SCRATCH_DIR"

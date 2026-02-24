@@ -12,14 +12,18 @@ usage() {
 Usage: rovibe <command> [args...]
 
 Commands:
-  create agent <username> <role>          Create an isolated agent identity
-  delete agent <username>                 Delete an agent identity
-  assign reviewer <agent> <project-dir>   Assign agent as project reviewer
-  unassign reviewer <agent> <project-dir> Remove agent's reviewer assignment
-  launch reviewer <agent> <project-dir>   Launch a reviewer session
-  list reviewers <project-dir>            List agents and assignment status
-  sync <project-dir>                      Sync all mirrors for a project
-  uninstall [--purge]                     Remove rovibe from the system
+  create <username> [--profile <profile>]  Create an isolated agent identity
+                                           Profiles: read-only, standard (default),
+                                                     network-isolated
+  delete <username>                        Delete an agent identity
+  assign <agent> <project> [--role <role>] Assign agent to project
+  unassign <agent> <project>               Remove agent's project assignment
+  launch <agent> <project>                 Launch an agent session
+  list [<agent>|<project>]                 List agents and assignment status
+  allow <agent> <cmd> [<cmd> ...]          Allow agent to run commands
+  restrict <agent> <cmd> [<cmd> ...]       Revoke agent's access to commands
+  sync <project>                           Sync all mirrors for a project
+  uninstall [--purge]                      Remove rovibe from the system
 EOF
   exit 1
 }
@@ -30,62 +34,37 @@ VERB="$1"; shift
 
 case "$VERB" in
   create)
-    [[ $# -ge 1 ]] || usage
-    NOUN="$1"; shift
-    case "$NOUN" in
-      agent) exec "$ROVIBE_LIB/create-agent" "$@" ;;
-      *)     usage ;;
-    esac
+    exec "$ROVIBE_LIB/create-agent" "$@"
     ;;
   delete)
-    [[ $# -ge 1 ]] || usage
-    NOUN="$1"; shift
-    case "$NOUN" in
-      agent)
-        [[ $# -ge 1 ]] || err "delete agent requires a username"
-        USERNAME="$1"; shift
-        exec "$ROVIBE_LIB/create-agent" "$USERNAME" reviewer --delete
-        ;;
-      *) usage ;;
-    esac
+    exec "$ROVIBE_LIB/create-agent" "$@" --delete
     ;;
   assign)
-    [[ $# -ge 1 ]] || usage
-    NOUN="$1"; shift
-    case "$NOUN" in
-      reviewer) exec "$ROVIBE_LIB/assign-reviewer" "$@" ;;
-      *)        usage ;;
-    esac
+    exec "$ROVIBE_LIB/assign" "$@"
     ;;
   unassign)
-    [[ $# -ge 1 ]] || usage
-    NOUN="$1"; shift
-    case "$NOUN" in
-      reviewer) exec "$ROVIBE_LIB/unassign-reviewer" "$@" ;;
-      *)        usage ;;
-    esac
+    exec "$ROVIBE_LIB/unassign" "$@"
     ;;
   launch)
-    [[ $# -ge 1 ]] || usage
-    NOUN="$1"; shift
-    case "$NOUN" in
-      reviewer) exec "$ROVIBE_LIB/launch-reviewer" "$@" ;;
-      *)        usage ;;
-    esac
+    exec "$ROVIBE_LIB/launch" "$@"
     ;;
   list)
-    [[ $# -ge 1 ]] || usage
-    NOUN="$1"; shift
-    case "$NOUN" in
-      reviewers) exec "$ROVIBE_LIB/list-reviewers" "$@" ;;
-      *)         usage ;;
-    esac
+    exec "$ROVIBE_LIB/list" "$@"
+    ;;
+  allow)
+    exec "$ROVIBE_LIB/allow" "$@"
+    ;;
+  restrict)
+    exec "$ROVIBE_LIB/restrict" "$@"
     ;;
   sync)
     # Inline sync: find all agent mirrors for this project and sync them
     [[ $# -ge 1 ]] || err "sync requires a project directory"
     PROJECT_DIR="$1"; shift
     [[ -d "$PROJECT_DIR" ]] || err "Project directory does not exist: $PROJECT_DIR"
+    if [[ $EUID -ne 0 ]]; then
+      exec sudo "$0" sync "$PROJECT_DIR" "$@"
+    fi
     PROJECT_DIR=$(realpath "$PROJECT_DIR")
     PROJECT_NAME=$(basename "$PROJECT_DIR")
 
@@ -107,7 +86,7 @@ case "$VERB" in
       MIRROR="/home/$user/mirrors/$PROJECT_NAME"
       if [[ -d "$MIRROR" ]]; then
         log "Syncing mirror for $user..."
-        sudo -u "$user" "$ROVIBE_LIB/sync-mirror" "$PROJECT_DIR" "$MIRROR"
+        "$ROVIBE_LIB/sync-mirror" "$PROJECT_DIR" "$MIRROR"
         COUNT=$((COUNT + 1))
       fi
     done

@@ -7,86 +7,118 @@ err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage: create-agent <username> <role> [--delete]
+Usage: create-agent <username> [--profile <profile>] [--delete]
 
 Creates (or deletes) an OS-level isolated agent identity.
 
 Arguments:
-  username   Agent username (e.g. agent.ro)
-  role       Agent role (e.g. reviewer) — informational only
-  --delete   Remove the agent user and its home directory
+  username                Agent username (e.g. agent.ro)
+  --profile <profile>     Permission profile (default: standard)
+                          Profiles: read-only, standard, network-isolated
+  --delete                Remove the agent user and its home directory
 
 The agent gets:
-  - A restricted PATH (/opt/agents/bin only)
+  - A restricted PATH (/opt/rovibe/<username>/bin only)
   - Membership in the 'agents' group
   - A home directory at /home/<username>
-  - Allowlisted symlinks in /opt/agents/bin/
+  - Allowlisted symlinks in /opt/rovibe/<username>/bin/
 EOF
   exit 1
 }
 
-# --- Allowlisted binaries that agents may use ---
-ALLOWLIST=(
-  # Core utilities
-  bash cat cp cut date dirname env find grep head id ln ls
-  mkdir mktemp readlink realpath rmdir sed sleep sort stat
-  tail tee touch tr uname wc which xargs basename
-
-  # Git
-  git
-
-  # Editors / pagers
-  less more
-
-  # Developer tools
-  python3 pip3 claude
-
-  # Networking (for API access)
-  curl wget
-
-  # JSON / text processing
-  jq awk
-
-  # File inspection
-  file diff
+# --- Profile command sets ---
+PROFILE_READ_ONLY=(
+  bash sh
+  cat echo cut grep sed awk tr head tail wc sort uniq tee
+  printf expr seq strings
+  ls pwd stat file find du df
+  basename dirname realpath readlink
+  lsblk lscpu lsmem
+  ps id whoami uptime free
+  diff cmp md5sum sha256sum
+  true false sleep
+  jq xargs
+  date uname
 )
 
-AGENTS_BIN="/opt/agents/bin"
+PROFILE_NETWORK_ISOLATED=(
+  bash sh
+  cat echo cut grep sed awk tr head tail wc sort uniq tee
+  printf expr seq strings
+  ls pwd stat file find du df
+  basename dirname realpath readlink
+  lsblk lscpu lsmem
+  ps id whoami uptime free
+  diff cmp md5sum sha256sum
+  true false sleep
+  jq xargs
+  date uname
+  tar zip unzip bzip2 gzip xz zstd
+  vim nano
+  ping ss lsof
+  python3
+  touch cp mkdir mktemp rmdir ln
+  more less which
+  env envsubst
+)
 
-populate_agents_bin() {
-  log "Populating $AGENTS_BIN with allowlisted symlinks..."
-  sudo mkdir -p "$AGENTS_BIN"
-  sudo chown root:root "$AGENTS_BIN"
-  sudo chmod 755 "$AGENTS_BIN"
+PROFILE_STANDARD=(
+  bash sh
+  cat echo cut grep sed awk tr head tail wc sort uniq tee
+  printf expr seq strings
+  ls pwd stat file find du df
+  basename dirname realpath readlink
+  lsblk lscpu lsmem
+  ps id whoami uptime free
+  diff cmp md5sum sha256sum
+  true false sleep
+  jq xargs
+  date uname
+  tar zip unzip bzip2 gzip xz zstd
+  vim nano
+  ping ss lsof
+  curl wget
+  git
+  python3
+  touch cp mkdir mktemp rmdir ln
+  more less which
+  env envsubst
+)
 
-  # Clean out everything first — removes stale/broken symlinks from prior runs
-  sudo find "$AGENTS_BIN" -maxdepth 1 -type l -delete 2>/dev/null || true
-
-  # Build a lookup set of allowlisted names
-  declare -A allowed
-  for cmd in "${ALLOWLIST[@]}"; do
-    allowed[$cmd]=1
-  done
-
-  for cmd in "${ALLOWLIST[@]}"; do
-    target="$AGENTS_BIN/$cmd"
-    src=$(command -v "$cmd" 2>/dev/null || true)
-    # Skip shell builtins — command -v returns the bare name, not an absolute path
-    if [[ -n "$src" && "$src" == /* ]]; then
-      sudo ln -sf "$src" "$target"
-      log "  linked $cmd -> $src"
-    else
-      log "  SKIP $cmd (not found or is a shell builtin)"
-    fi
-  done
-}
 
 create_agent() {
   local username="$1"
-  local role="$2"
   local home="/home/$username"
   local os
   os=$(uname -s)
+
+  # Validate and select profile
+  case "$PROFILE" in
+    read-only|standard|network-isolated) ;;
+    *) err "Unknown profile: '$PROFILE'. Valid: read-only, standard, network-isolated" ;;
+  esac
+
+  local ALLOWLIST
+  case "$PROFILE" in
+    read-only)        ALLOWLIST=("${PROFILE_READ_ONLY[@]}") ;;
+    network-isolated) ALLOWLIST=("${PROFILE_NETWORK_ISOLATED[@]}") ;;
+    standard)         ALLOWLIST=("${PROFILE_STANDARD[@]}") ;;
+  esac
+
+  # Conditionally add node if Claude is not a native binary
+  CLAUDE_BIN=""
+  [[ -n "${SUDO_USER:-}" ]] && \
+    CLAUDE_BIN=$(sudo -u "$SUDO_USER" bash -c 'command -v claude' 2>/dev/null || true)
+  [[ -z "$CLAUDE_BIN" && -n "${SUDO_USER:-}" && \
+     -x "/home/$SUDO_USER/.claude/local/claude" ]] && \
+    CLAUDE_BIN="/home/$SUDO_USER/.claude/local/claude"
+  if [[ -n "$CLAUDE_BIN" ]] && \
+     ! file "$CLAUDE_BIN" | grep -q "ELF"; then
+    ALLOWLIST+=(node)
+    log "NOTE: non-native Claude detected — adding 'node' to allowlist"
+    log "      Migrate to native installer to remove this requirement:"
+    log "      https://code.claude.com/docs/en/setup"
+  fi
 
   # Ensure agents group exists
   if ! getent group agents >/dev/null 2>&1; then
@@ -135,21 +167,32 @@ create_agent() {
       ;;
   esac
 
-  # Populate /opt/agents/bin
-  populate_agents_bin
+  # Create per-agent bin directory
+  local bin_dir="/opt/rovibe/$username/bin"
+  sudo mkdir -p "$bin_dir"
+  sudo chown root:agents "$bin_dir"
+  sudo chmod 755 "$bin_dir"
+
+  # Populate default allowlist
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  "$script_dir/allow" "$username" "${ALLOWLIST[@]}"
+
+  # Write profile metadata
+  echo "$PROFILE" > "/opt/rovibe/$username/.rovibe-profile"
+  chown root:agents "/opt/rovibe/$username/.rovibe-profile"
+  chmod 644 "/opt/rovibe/$username/.rovibe-profile"
 
   # Write .bashrc with restricted PATH
   local bashrc="$home/.bashrc"
   log "Writing restricted .bashrc..."
-  sudo tee "$bashrc" >/dev/null <<'BASHRC'
+  sudo tee "$bashrc" >/dev/null <<BASHRC
 # rovibe agent shell — restricted PATH
-export PATH="/opt/agents/bin"
-export AGENT_ROLE="__ROLE__"
+export PATH="/opt/rovibe/$username/bin"
 
 # Prevent user from resetting PATH
 readonly PATH
 BASHRC
-  sudo sed -i "s/__ROLE__/$role/" "$bashrc"
   sudo chown "$username":agents "$bashrc"
   sudo chmod 644 "$bashrc"
 
@@ -179,9 +222,22 @@ LIMITS
     fi
   fi
 
-  log "Agent '$username' created with role '$role'."
+  log "Agent '$username' created."
+  log "Profile: $PROFILE"
   log "Home: $home"
-  log "PATH: /opt/agents/bin"
+  log "PATH: /opt/rovibe/$username/bin"
+}
+
+print_available_agents() {
+  local members
+  members=$(getent group agents 2>/dev/null | cut -d: -f4 | tr ',' '\n' \
+            | grep -v '^$' | sed 's/^/  /')
+  echo "Available agents:"
+  if [[ -z "$members" ]]; then
+    echo "  (none)"
+  else
+    echo "$members"
+  fi
 }
 
 delete_agent() {
@@ -211,6 +267,9 @@ delete_agent() {
       ;;
   esac
 
+  # Remove per-agent bin
+  sudo rm -rf "/opt/rovibe/$username"
+
   # Remove limits.conf
   sudo rm -f "/etc/security/limits.d/$username.conf"
 
@@ -218,14 +277,57 @@ delete_agent() {
 }
 
 # --- Main ---
-[[ $# -lt 2 ]] && usage
+[[ $# -lt 1 ]] && usage
 
-USERNAME="$1"
-ROLE="$2"
-DELETE_FLAG="${3:-}"
+if [[ $EUID -ne 0 ]]; then
+  exec sudo "$0" "$@"
+fi
 
-if [[ "$DELETE_FLAG" == "--delete" ]]; then
+USERNAME=""
+DELETE_FLAG=false
+PROFILE="standard"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --delete)
+      DELETE_FLAG=true
+      shift
+      ;;
+    --profile)
+      [[ $# -ge 2 ]] || err "--profile requires a value"
+      PROFILE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      if [[ -z "$USERNAME" ]]; then
+        USERNAME="$1"
+      else
+        err "Unexpected argument: $1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+if $DELETE_FLAG; then
+  SCRIPT="rovibe"
+  if [[ -z "$USERNAME" ]]; then
+    echo "[rovibe] Error: missing argument" >&2
+    echo "Usage: rovibe delete <agent>"
+    print_available_agents
+    exit 1
+  fi
+  if ! id "$USERNAME" >/dev/null 2>&1; then
+    echo "[rovibe] Error: agent '$USERNAME' does not exist" >&2
+    echo "Usage: rovibe delete <agent>"
+    print_available_agents
+    exit 1
+  fi
   delete_agent "$USERNAME"
 else
-  create_agent "$USERNAME" "$ROLE"
+  [[ -n "$USERNAME" ]] || err "Missing username"
+  create_agent "$USERNAME"
 fi

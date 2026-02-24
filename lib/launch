@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT="launch-reviewer"
+SCRIPT="launch"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage: launch-reviewer <agent-user> <project-dir> [--prompt-file <path>]
+Usage: launch <agent> <project> [--prompt-file <path>]
+       (args are order-independent — inferred by type)
 
-Launches a reviewer session for the given agent:
+Launches an agent session:
   1. Runs sync-mirror to pick up any new files
   2. Starts fswatch watcher for live sync (if available)
-  3. Launches claude/cc as the agent user
+  3. Launches claude as the agent user
 
 Options:
   --prompt-file <path>   Pass prompt content via --print to Claude Code
@@ -24,6 +25,7 @@ EOF
 AGENT_USER=""
 PROJECT_DIR=""
 PROMPT_FILE=""
+ORIG_ARGS=("$@")
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,12 +38,18 @@ while [[ $# -gt 0 ]]; do
       usage
       ;;
     *)
-      if [[ -z "$AGENT_USER" ]]; then
-        AGENT_USER="$1"
-      elif [[ -z "$PROJECT_DIR" ]]; then
+      # Classify bare args by type, not position.
+      # ~* in [[ ]] matches a literal tilde — correct for detection;
+      # eval echo handles actual expansion in the -d fallback.
+      if [[ "$1" == /* || "$1" == ~* || "$1" == ./* || "$1" == */* ]] \
+         || [[ -d "$(eval echo "$1" 2>/dev/null)" ]]; then
+        [[ -z "$PROJECT_DIR" ]] || err "ambiguous: two paths provided"
         PROJECT_DIR="$1"
+      elif id "$1" >/dev/null 2>&1 && id -nG "$1" 2>/dev/null | grep -qw agents; then
+        [[ -z "$AGENT_USER" ]] || err "ambiguous: two agent users provided"
+        AGENT_USER="$1"
       else
-        err "Unexpected argument: $1"
+        err "cannot infer argument: $1"
       fi
       shift
       ;;
@@ -53,11 +61,15 @@ done
 [[ -d "$PROJECT_DIR" ]] || err "Project directory does not exist: $PROJECT_DIR"
 id "$AGENT_USER" >/dev/null 2>&1 || err "Agent user '$AGENT_USER' does not exist"
 
+if [[ $EUID -ne 0 ]]; then
+  exec sudo "$0" "${ORIG_ARGS[@]}"
+fi
+
 PROJECT_DIR=$(realpath "$PROJECT_DIR")
 PROJECT_NAME=$(basename "$PROJECT_DIR")
 MIRROR_DIR="/home/$AGENT_USER/mirrors/$PROJECT_NAME"
 
-[[ -d "$MIRROR_DIR" ]] || err "Mirror does not exist at $MIRROR_DIR — run assign-reviewer first"
+[[ -d "$MIRROR_DIR" ]] || err "Mirror does not exist at $MIRROR_DIR — run rovibe assign first"
 
 # Find sync-mirror
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,7 +84,7 @@ fi
 
 # --- Step 1: Initial sync ---
 log "Running initial sync..."
-sudo -u "$AGENT_USER" "$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR"
+"$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR"
 
 # --- Step 2: Start fswatch watcher (if available) ---
 WATCHER_PID=""
@@ -90,7 +102,7 @@ if command -v fswatch >/dev/null 2>&1; then
   log "Starting fswatch watcher on $PROJECT_DIR..."
   (
     fswatch -r -e '\.git' -e '\.scratch' "$PROJECT_DIR" | while read -r _; do
-      sudo -u "$AGENT_USER" "$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR" 2>/dev/null || true
+      "$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR" 2>/dev/null || true
     done
   ) &
   WATCHER_PID=$!
@@ -101,14 +113,23 @@ else
   log "  Run sync-mirror manually to update, or install fswatch."
 fi
 
-# --- Step 3: Find claude/cc command ---
+# --- Step 3: Find claude command ---
 CLAUDE_CMD=""
+
+# 1. Direct PATH lookup (works if installed system-wide)
 if command -v claude >/dev/null 2>&1; then
-  CLAUDE_CMD="claude"
-elif command -v cc >/dev/null 2>&1; then
-  CLAUDE_CMD="cc"
+  CLAUDE_CMD="$(command -v claude)"
+
+# 2. User-local Claude Code install (most common)
+elif [[ -x "$HOME/.claude/local/claude" ]]; then
+  CLAUDE_CMD="$HOME/.claude/local/claude"
+
+# 3. Operator's home dir (when launched via sudo, HOME may be root's)
+elif [[ -n "${SUDO_USER:-}" && -x "/home/$SUDO_USER/.claude/local/claude" ]]; then
+  CLAUDE_CMD="/home/$SUDO_USER/.claude/local/claude"
+
 else
-  err "Neither 'claude' nor 'cc' found in PATH"
+  err "'claude' not found. Install Claude Code: https://docs.anthropic.com/claude-code"
 fi
 
 # --- Step 4: Launch Claude Code as agent user ---
@@ -123,4 +144,4 @@ fi
 
 sudo -u "$AGENT_USER" bash --login -c "cd '$MIRROR_DIR' && $CLAUDE_CMD ${CLAUDE_ARGS[*]:+${CLAUDE_ARGS[*]}}"
 
-log "Reviewer session ended."
+log "Agent session ended."

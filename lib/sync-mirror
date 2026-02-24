@@ -105,7 +105,11 @@ sync_directory() {
   local src="$1"
   local mirror="$2"
   local src_abs
-  src_abs=$(realpath "$src")
+  if [[ "$src" = /* ]]; then
+    src_abs="$src"
+  else
+    src_abs=$(realpath "$src")
+  fi
 
   log "Syncing $src_abs -> $mirror"
 

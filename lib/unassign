@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT="unassign-reviewer"
+SCRIPT="unassign"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage: unassign-reviewer <agent-user> <project-dir> [--purge-scratch]
+Usage: unassign <agent> <project> [--purge-scratch]
+       (args are order-independent — inferred by type)
 
-Removes an agent's reviewer assignment for a project:
+Removes an agent's assignment for a project:
   1. Removes symlinks from the mirror
   2. Removes .claude/ dir and .scratch symlink from mirror
   3. Removes empty directories bottom-up
@@ -25,6 +26,7 @@ EOF
 AGENT_USER=""
 PROJECT_DIR=""
 PURGE_SCRATCH=false
+ORIG_ARGS=("$@")
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,12 +38,18 @@ while [[ $# -gt 0 ]]; do
       usage
       ;;
     *)
-      if [[ -z "$AGENT_USER" ]]; then
-        AGENT_USER="$1"
-      elif [[ -z "$PROJECT_DIR" ]]; then
+      # Classify bare args by type, not position.
+      # ~* in [[ ]] matches a literal tilde — correct for detection;
+      # eval echo handles actual expansion in the -d fallback.
+      if [[ "$1" == /* || "$1" == ~* || "$1" == ./* || "$1" == */* ]] \
+         || [[ -d "$(eval echo "$1" 2>/dev/null)" ]]; then
+        [[ -z "$PROJECT_DIR" ]] || err "ambiguous: two paths provided"
         PROJECT_DIR="$1"
+      elif id "$1" >/dev/null 2>&1 && id -nG "$1" 2>/dev/null | grep -qw agents; then
+        [[ -z "$AGENT_USER" ]] || err "ambiguous: two agent users provided"
+        AGENT_USER="$1"
       else
-        err "Unexpected argument: $1"
+        err "cannot infer argument: $1"
       fi
       shift
       ;;
@@ -50,6 +58,10 @@ done
 
 [[ -n "$AGENT_USER" ]] || err "Missing agent username"
 [[ -n "$PROJECT_DIR" ]] || err "Missing project directory"
+
+if [[ $EUID -ne 0 ]]; then
+  exec sudo "$0" "${ORIG_ARGS[@]}"
+fi
 
 PROJECT_DIR=$(realpath "$PROJECT_DIR")
 PROJECT_NAME=$(basename "$PROJECT_DIR")
@@ -95,4 +107,4 @@ if $PURGE_SCRATCH; then
   fi
 fi
 
-log "Reviewer '$AGENT_USER' unassigned from '$PROJECT_NAME'."
+log "Agent '$AGENT_USER' unassigned from '$PROJECT_NAME'."

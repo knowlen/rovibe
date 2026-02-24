@@ -1,10 +1,10 @@
 post_install() {
-  mkdir -p /opt/agents/bin
+  mkdir -p /opt/rovibe
   groupadd -f agents
 }
 
 post_upgrade() {
-  mkdir -p /opt/agents/bin
+  mkdir -p /opt/rovibe
   groupadd -f agents
 }
 
