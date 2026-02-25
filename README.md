@@ -8,9 +8,9 @@
 ![rovibe architecture](docs/rovibe-diag.svg)
 
  
-I believe Claude Code sessions should run under their own user accounts. 
-I think those accounts should only have execute and write permissions on 
-files and commands necessary within the scope of their work, and I realize that 
+I find it useful to run Claude Code sessions as their own user accounts, granting
+execute and write permissions only to the
+files and commands necessary for the scope of the work. 
 `settings.json` config / runtime config files don't
 actually guarantee this. So I threw together a tool that can. Sort of like 
 virtual environments, but for users and enforced by the kernel instead of the runtime.
