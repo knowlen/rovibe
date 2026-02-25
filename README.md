@@ -75,7 +75,7 @@ sudo bash install.sh
 
 All commands go through the `rovibe` dispatcher.
 ```bash
-rovibe -h
+$ rovibe -h
 Usage: rovibe <command> [args...]
 
 Commands:
@@ -94,7 +94,7 @@ Commands:
 
 
 # Create an agent (profiles: standard, read-only, network-isolated)
-rovibe create a.noir
+$ rovibe create a.noir
 [create-agent] Creating user 'a.noir'...
 ...
 [allow]   allowed ln -> /usr/bin/ln
@@ -115,7 +115,7 @@ rovibe create a.noir
 [create-agent] PATH: /opt/rovibe/a.noir/bin
 
 # Assign agent to a project
-rovibe assign a.noir ~/repos/rovibe --role reviewer
+$ rovibe assign a.noir ~/repos/rovibe --role reviewer
 [assign] Setting agents group permissions on /home/nknowles/repos/rovibe...
 [assign] Creating symlink mirror at /home/a.noir/mirrors/rovibe...
 [sync-mirror] Syncing /home/nknowles/repos/rovibe -> /home/a.noir/mirrors/rovibe
@@ -153,28 +153,28 @@ rovibe assign a.noir ~/repos/rovibe --role reviewer
 [assign] Scratch: /home/nknowles/repos/rovibe/.scratch/reviews/a.noir
 
 # Manage binary allowlist
-rovibe allow a.noir node 
+$ rovibe allow a.noir node 
 [allow]   allowed node -> /usr/bin/node
 [allow] AppArmor profile updated — changes take effect on next launch
 
-rovibe restrict a.noir node
+$ rovibe restrict a.noir node
 [restrict]   restricted node
 [restrict] AppArmor profile updated — changes take effect on next launch
 
 # Launch a session
-rovibe launch a.noir ~/repos/rovibe
+$ rovibe launch a.noir ~/repos/rovibe
 #################
 #--claude code--#
 #################
 
 # List agents and assignments
-rovibe list
+$ rovibe list
 AGENT                PROFILE              PROJECTS
 -----                -------              --------
 a.red                standard             rovibe (genius)
 a.noir               custom               rovibe (reviewer)
 
-rovibe list a.noir
+$ rovibe list a.noir
 AGENT: a.noir
 PROFILE: custom
 APPARMOR: enforcing
@@ -182,7 +182,7 @@ PROJECT              ROLE         LAST ACTIVE          SOURCE
 -------              ----         -----------          ------
 rovibe               reviewer     02-23-2026 17:46     /home/nknowles/repos/rovibe
 
-rovibe list ~/repos/rovibe
+$ rovibe list ~/repos/rovibe
 PROJECT: rovibe  (/home/nknowles/repos/rovibe)
 AGENT                ROLE         LAST ACTIVE
 -----                ----         -----------
