@@ -7,17 +7,18 @@
 
 ![rovibe architecture](docs/rovibe-diag.svg)
 
-A personal tool for running isolated Claude Code sessions. Provisions OS
-user accounts with restricted binary allowlists and read-only symlink
-mirrors of a project. Sort of like virtual environments, but for users
-and enforced by the kernel instead of the runtime.
-
-
+ 
 I believe CC sessions should run under their own user accounts. 
 I think those accounts should only have execute and write permissions on 
 files and commands necessary within the scope of their work. 
 I realized that settings.json config / runtime config files could never
-actually guarantee this. So I threw together this tool. 
+actually guarantee this. So I threw together a tool that can. Sort of like 
+virtual environments, but for users and enforced by the kernel instead of the runtime.
+
+It currently works by provisioning OS
+user accounts with restricted binary allowlists and read-only symlink
+mirrors of a project. I can then flip the w and x permissions manually 
+to configure granular access scopes within a broader codebase.  
 
 Maintained for Arch Linux. Exploring options for support Mac.
 
