@@ -11,7 +11,7 @@
 I find it useful to run Claude Code sessions as their own user accounts, granting
 execute and write permissions only to the
 files and commands necessary for the scope of the work. 
-`settings.json` config / runtime config files don't
+`settings.json` config files don't
 actually guarantee this. So I threw together a tool that can. Sort of like 
 virtual environments, but for users and enforced by the kernel instead of the runtime.
 
