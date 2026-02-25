@@ -62,7 +62,7 @@ def generate(reg_b64, bold_b64):
 
 <!-- ROW 1 -->
 <rect x="40" y="90" width="320" height="72" fill="#0d0b14" stroke="#3a3060" stroke-width="1"/>
-<text x="200" y="104" font-size="8" fill="#9f9fcf" letter-spacing="1.5" text-anchor="middle">01 · CREATE AGENT</text>
+<text x="200" y="104" font-size="8" fill="#9f9fcf" letter-spacing="1.5" text-anchor="middle">CREATE AGENT</text>
 <text x="200" y="120" font-size="10" font-weight="700" fill="#d0d0d0" text-anchor="middle">rovibe create &lt;agent&gt;</text>
 <text x="200" y="136" font-size="9" fill="#9f9fcf" text-anchor="middle">rovibe create a.noir</text>
 <text x="200" y="152" font-size="8.5" fill="#585858" text-anchor="middle">provision a.noir, add to agents, create apparmor profile</text>
@@ -87,7 +87,7 @@ def generate(reg_b64, bold_b64):
 
 <!-- ROW 2 -->
 <rect x="40" y="174" width="320" height="72" fill="#0d0b14" stroke="#3a3060" stroke-width="1"/>
-<text x="200" y="188" font-size="8" fill="#9f9fcf" letter-spacing="1.5" text-anchor="middle">02 · ASSIGN TO PROJECT</text>
+<text x="200" y="188" font-size="8" fill="#9f9fcf" letter-spacing="1.5" text-anchor="middle">ASSIGN TO PROJECT</text>
 <text x="200" y="204" font-size="10" font-weight="700" fill="#d0d0d0" text-anchor="middle">rovibe assign &lt;agent&gt; &lt;project&gt; --role &lt;role&gt;</text>
 <text x="200" y="220" font-size="9" fill="#9f9fcf" text-anchor="middle">rovibe assign a.noir ~/repos/project --role reviewer</text>
 <text x="200" y="236" font-size="8.5" fill="#585858" text-anchor="middle">mirror project for a.noir, provision scratch dir</text>
@@ -112,7 +112,7 @@ def generate(reg_b64, bold_b64):
 
 <!-- ROW 3 -->
 <rect x="40" y="258" width="320" height="72" fill="#0d0b14" stroke="#3a3060" stroke-width="1"/>
-<text x="200" y="272" font-size="8" fill="#9f9fcf" letter-spacing="1.5" text-anchor="middle">03 · LAUNCH</text>
+<text x="200" y="272" font-size="8" fill="#9f9fcf" letter-spacing="1.5" text-anchor="middle">LAUNCH</text>
 <text x="200" y="288" font-size="10" font-weight="700" fill="#d0d0d0" text-anchor="middle">rovibe launch &lt;agent&gt; &lt;project&gt;</text>
 <text x="200" y="304" font-size="9" fill="#9f9fcf" text-anchor="middle">rovibe launch a.noir ~/repos/project</text>
 <text x="200" y="320" font-size="8.5" fill="#585858" text-anchor="middle">start Claude Code session as a.noir OS user</text>
