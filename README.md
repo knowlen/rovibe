@@ -28,8 +28,6 @@ Each agent gets:
 - An AppArmor profile (if available) enforcing the allowlist at the
   kernel level
 
-## Threat model
-
 **Without AppArmor:** Identity and filesystem isolation only. Each agent
 gets its own user account and can only *find* commands in its allowlist
 via PATH. Absolute paths (`/usr/bin/curl`), `python3 os.system()`, and
