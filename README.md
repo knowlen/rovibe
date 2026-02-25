@@ -222,6 +222,3 @@ Profiles control the default binary allowlist at creation time.
 - `apparmor` — optional, strongly recommended
 - `fswatch` — optional, enables live mirror sync during sessions
 
-## License
-
-WTFPL
