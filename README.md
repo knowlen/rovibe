@@ -15,7 +15,7 @@ files and commands necessary for the scope of the work.
 actually guarantee this, so I threw together a tool that can. Sort of like 
 virtual environments, but for users and enforced by the kernel instead of the runtime.
 
-Maintained for Arch Linux. Exploring options for support Mac.
+Maintained for Arch Linux. Exploring options for Mac.
 
 
 ## Threat model
