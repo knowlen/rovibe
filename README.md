@@ -8,7 +8,7 @@
 ![rovibe architecture](docs/rovibe-diag.svg)
 
  
-I have found it useful to run Claude Code sessions as their own user accounts, granting
+I've found it useful to run Claude Code sessions as their own user accounts, granting
 execute and write permissions only to the
 files and commands necessary for the scope of the work. 
 `settings.json` config files don't
@@ -22,7 +22,7 @@ Maintained for Arch Linux. Exploring options for Mac.
 Each agent gets:
 - A dedicated Linux user account in the `agents` group
 - A per-agent bin directory (`/opt/rovibe/<agent>/bin/`) with symlinks
-  to approved system binaries — nothing else is in PATH
+  to approved system binaries,  nothing else is in PATH
 - A read-only symlink mirror of the target project
 - A writable scratch space for output
 - An AppArmor profile (if available) enforcing the allowlist at the
@@ -35,7 +35,7 @@ similar bypasses still work. Useful for audit trails and preventing
 accidental damage, not for confining adversarial agents.
 
 **With AppArmor:** Hard execution boundary at the kernel level. Every
-`exec()` syscall is mediated — only binaries explicitly in the agent's
+`exec()` syscall is mediated, only binaries explicitly in the agent's
 profile can run, regardless of how the path was obtained. `python3`
 subprocess, `find -exec`, `bash --norc`, all blocked.
 
@@ -95,7 +95,7 @@ $ rovibe create a.noir
 [allow]   allowed env -> /usr/bin/env
 [allow]   allowed envsubst -> /usr/bin/envsubst
 [allow]   allowed node -> /usr/bin/node
-[allow] AppArmor profile updated — changes take effect on next launch
+[allow] AppArmor profile updated, changes take effect on next launch
 [create-agent] AppArmor profile generated: rovibe-a.noir
 [create-agent] Writing restricted .bashrc...
 [create-agent] Writing .bash_profile...
@@ -146,15 +146,15 @@ $ rovibe assign a.noir ~/repos/rovibe --role reviewer
 # Add a binary to allowlist
 $ rovibe allow a.noir node 
 [allow]   allowed node -> /usr/bin/node
-[allow] AppArmor profile updated — changes take effect on next launch
+[allow] AppArmor profile updated, changes take effect on next launch
 
 # Remove a binary from allowlist 
 $ rovibe restrict a.noir node
 [restrict]   restricted node
-[restrict] AppArmor profile updated — changes take effect on next launch
+[restrict] AppArmor profile updated, changes take effect on next launch
 
 # Launch a session
-$ rovibe launch a.noir ~/repos/rovibe
+$ sudo rovibe launch a.noir ~/repos/rovibe
 #################
 #--claude code--#
 #################
@@ -220,6 +220,6 @@ Profiles control the default binary allowlist at creation time.
 
 ## Requirements
 
-- `apparmor` — optional, strongly recommended
-- `fswatch` — optional, enables live mirror sync during sessions
+- `apparmor` optional, strongly recommended
+- `fswatch` optional, enables live mirror sync during sessions
 
