@@ -7,12 +7,11 @@
 
 ![rovibe architecture](docs/rovibe-diag.svg)
 
-Personal tool for running isolated Claude Code sessions. Provisions OS
+A personal tool for running isolated Claude Code sessions. Provisions OS
 user accounts with restricted binary allowlists and read-only symlink
 mirrors of a project. Sort of like virtual environments, but for users
 and enforced by the kernel instead of the runtime.
 
-Maintained for Arch Linux. Exploring options for support Mac.
 
 I believe CC sessions should run under their own user accounts. 
 I think those accounts should only have execute and write permissions on 
@@ -21,6 +20,8 @@ I know that settings.json config / prompt
 files cannot actually guarantee this. 
 Oh and I think they should be able to ask each other clarifying questions 
 or critique that work. So I converged on this workflow.
+
+Maintained for Arch Linux. Exploring options for support Mac.
 
 
 ## Threat model
