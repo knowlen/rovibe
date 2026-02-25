@@ -15,12 +15,6 @@ files and commands necessary within the scope of their work, and I realized that
 actually guarantee this. So I threw together a tool that can. Sort of like 
 virtual environments, but for users and enforced by the kernel instead of the runtime.
 
-This currently works by provisioning OS
-user accounts with restricted binary allowlists and read-only symlink
-mirrors of a project. The w and x permissions can then be manually flipped 
-to configure granular access scopes within a broader codebase for a specific 
-coding CLI session.  
-
 Maintained for Arch Linux. Exploring options for support Mac.
 
 
