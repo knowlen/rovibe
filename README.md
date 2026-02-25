@@ -16,10 +16,8 @@ and enforced by the kernel instead of the runtime.
 I believe CC sessions should run under their own user accounts. 
 I think those accounts should only have execute and write permissions on 
 files and commands necessary within the scope of their work. 
-I know that settings.json config / prompt 
-files cannot actually guarantee this. 
-Oh and I think they should be able to ask each other clarifying questions 
-or critique that work. So I converged on this workflow.
+I realized that settings.json config / runtime config files could never
+actually guarantee this. So I threw together this tool. 
 
 Maintained for Arch Linux. Exploring options for support Mac.
 
