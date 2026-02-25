@@ -152,11 +152,12 @@ $ rovibe assign a.noir ~/repos/rovibe --role reviewer
 [assign] Mirror: /home/a.noir/mirrors/rovibe
 [assign] Scratch: /home/nknowles/repos/rovibe/.scratch/reviews/a.noir
 
-# Manage binary allowlist
+# Add a binary to allowlist
 $ rovibe allow a.noir node 
 [allow]   allowed node -> /usr/bin/node
 [allow] AppArmor profile updated — changes take effect on next launch
 
+# Remove a binary from allowlist 
 $ rovibe restrict a.noir node
 [restrict]   restricted node
 [restrict] AppArmor profile updated — changes take effect on next launch
@@ -174,6 +175,7 @@ AGENT                PROFILE              PROJECTS
 a.red                standard             rovibe (genius)
 a.noir               custom               rovibe (reviewer)
 
+# List agent
 $ rovibe list a.noir
 AGENT: a.noir
 PROFILE: custom
@@ -182,6 +184,7 @@ PROJECT              ROLE         LAST ACTIVE          SOURCE
 -------              ----         -----------          ------
 rovibe               reviewer     02-23-2026 17:46     /home/nknowles/repos/rovibe
 
+# List project dir
 $ rovibe list ~/repos/rovibe
 PROJECT: rovibe  (/home/nknowles/repos/rovibe)
 AGENT                ROLE         LAST ACTIVE
@@ -189,6 +192,7 @@ AGENT                ROLE         LAST ACTIVE
 a.red                genius       02-24-2026 23:33
 a.noir               reviewer     02-23-2026 17:46
 
+# Delete the agent user and purge its files 
 $ rovibe delete a.noir
 [sudo] password for nknowles:
 [rovibe] Deleting agent 'a.noir'...
