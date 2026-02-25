@@ -12,7 +12,7 @@ I find it useful to run Claude Code sessions as their own user accounts, grantin
 execute and write permissions only to the
 files and commands necessary for the scope of the work. 
 `settings.json` config files don't
-actually guarantee this. So I threw together a tool that can. Sort of like 
+actually guarantee this so I threw together a tool that can. Sort of like 
 virtual environments, but for users and enforced by the kernel instead of the runtime.
 
 Maintained for Arch Linux. Exploring options for support Mac.
