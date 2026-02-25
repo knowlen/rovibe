@@ -5,6 +5,8 @@ SCRIPT="uninstall"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apparmor"
+
 usage() {
   cat <<'EOF'
 Usage: rovibe uninstall [--purge]
@@ -68,6 +70,16 @@ else
 fi
 
 if $PURGE; then
+  # Remove all AppArmor profiles
+  if apparmor_available; then
+    for pf in "$APPARMOR_PROFILE_DIR"/rovibe-*; do
+      [[ -f "$pf" ]] || continue
+      apparmor_parser -R "$pf" 2>/dev/null || true
+    done
+    rm -rf "$APPARMOR_PROFILE_DIR"
+    log "Removed all rovibe AppArmor profiles"
+  fi
+
   # Remove per-agent bin directories
   if [[ -d /opt/rovibe ]]; then
     rm -rf /opt/rovibe

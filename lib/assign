@@ -8,7 +8,7 @@ err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 usage() {
   cat <<'EOF'
 Usage: assign <agent> <project> [--role <role>] [--claude-md <path>]
-       (args are order-independent — inferred by type)
+       (args are order-independent, inferred by type)
 
 Assigns an agent to a project:
   1. Sets agents group + read-only perms on project
@@ -31,6 +31,8 @@ CLAUDE_MD=""
 ROLE="reviewer"
 ORIG_ARGS=("$@")
 
+operator_home=$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role)
@@ -48,12 +50,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       # Classify bare args by type, not position.
-      # ~* in [[ ]] matches a literal tilde — correct for detection;
-      # eval echo handles actual expansion in the -d fallback.
+      # Only ~/... is expanded; ~user/... is not supported (use absolute paths)
       if [[ "$1" == /* || "$1" == ~* || "$1" == ./* || "$1" == */* ]] \
-         || [[ -d "$(eval echo "$1" 2>/dev/null)" ]]; then
+         || [[ -d "$1" ]]; then
         [[ -z "$PROJECT_DIR" ]] || err "ambiguous: two paths provided"
         PROJECT_DIR="$1"
+        [[ "$PROJECT_DIR" == ~/* || "$PROJECT_DIR" == "~" ]] && \
+          PROJECT_DIR="${PROJECT_DIR/#\~/$operator_home}"
       elif id "$1" >/dev/null 2>&1 && id -nG "$1" 2>/dev/null | grep -qw agents; then
         [[ -z "$AGENT_USER" ]] || err "ambiguous: two agent users provided"
         AGENT_USER="$1"
@@ -88,7 +91,7 @@ sudo chgrp -R agents "$PROJECT_DIR"
 # Set group read + execute on dirs, group read on files, no group write
 sudo chmod -R g+rX,g-w "$PROJECT_DIR"
 
-# Detect and handle venvs — they need execute bits on binaries
+# Detect and handle venvs, they need execute bits on binaries
 while IFS= read -r -d '' venv_dir; do
   if [[ -d "$venv_dir/bin" ]]; then
     log "  Preserving execute bits in venv: $venv_dir/bin"
@@ -100,7 +103,7 @@ done < <(find "$PROJECT_DIR" -maxdepth 2 -name "pyvenv.cfg" -printf '%h\0' 2>/de
 log "Creating symlink mirror at $MIRROR_DIR..."
 sudo -u "$AGENT_USER" mkdir -p "$(dirname "$MIRROR_DIR")"
 
-# Run sync-mirror — find it relative to this script or in PATH
+# Run sync-mirror, find it relative to this script or in PATH
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SYNC_MIRROR=""
 if [[ -x "$SCRIPT_DIR/sync-mirror" ]]; then
@@ -122,14 +125,27 @@ chown "$AGENT_USER":agents "$MIRROR_DIR/.rovibe-source" "$MIRROR_DIR/.rovibe-rol
 # --- Step 3: Create .scratch workspace ---
 log "Creating .scratch workspace at $SCRATCH_DIR..."
 sudo mkdir -p "$SCRATCH_DIR"
-# Sticky bit + setgid: files created here inherit group, only owner can delete
-sudo chmod 3770 "$SCRATCH_DIR"
 sudo chown "$AGENT_USER":agents "$SCRATCH_DIR"
+sudo chmod 700 "$SCRATCH_DIR"
 
 # Ensure parent .scratch/reviews dir exists with proper perms
 sudo mkdir -p "$PROJECT_DIR/.scratch/reviews"
 sudo chown root:agents "$PROJECT_DIR/.scratch" "$PROJECT_DIR/.scratch/reviews"
-sudo chmod 3775 "$PROJECT_DIR/.scratch" "$PROJECT_DIR/.scratch/reviews"
+sudo chmod 3711 "$PROJECT_DIR/.scratch" "$PROJECT_DIR/.scratch/reviews"
+
+# Migration: fix permissions on existing scratch dirs
+if [[ -d "$PROJECT_DIR/.scratch/reviews" ]]; then
+  for d in "$PROJECT_DIR/.scratch/reviews"/*/; do
+    [[ -d "$d" ]] || continue
+    user_name=$(basename "$d")
+    if id "$user_name" >/dev/null 2>&1; then
+      sudo chown "$user_name":agents "$d"
+    fi
+    sudo chmod 700 "$d"  # unconditional, locking stale dirs is safe
+  done
+  sudo chmod 3711 "$PROJECT_DIR/.scratch" \
+                  "$PROJECT_DIR/.scratch/reviews"
+fi
 
 # Symlink agent's scratch dir into the mirror
 local_scratch_link="$MIRROR_DIR/.scratch"

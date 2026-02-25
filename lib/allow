@@ -5,6 +5,8 @@ SCRIPT="allow"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apparmor"
+
 usage() {
   cat <<'EOF'
 Usage: allow <agent> <cmd> [<cmd> ...]
@@ -57,4 +59,10 @@ if [[ -f "$profile_file" ]]; then
       echo "custom" > "$profile_file"
       ;;
   esac
+fi
+
+# Regenerate AppArmor profile to reflect new allowlist
+if apparmor_available; then
+  apparmor_generate_profile "$AGENT_USER"
+  log "AppArmor profile updated, changes take effect on next launch"
 fi

@@ -5,6 +5,8 @@ SCRIPT="create-agent"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apparmor"
+
 usage() {
   cat <<'EOF'
 Usage: create-agent <username> [--profile <profile>] [--delete]
@@ -115,7 +117,7 @@ create_agent() {
   if [[ -n "$CLAUDE_BIN" ]] && \
      ! file "$CLAUDE_BIN" | grep -q "ELF"; then
     ALLOWLIST+=(node)
-    log "NOTE: non-native Claude detected — adding 'node' to allowlist"
+    log "NOTE: non-native Claude detected, adding 'node' to allowlist"
     log "      Migrate to native installer to remove this requirement:"
     log "      https://code.claude.com/docs/en/setup"
   fi
@@ -178,6 +180,15 @@ create_agent() {
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   "$script_dir/allow" "$username" "${ALLOWLIST[@]}"
 
+  # Explicit call -- allow triggers generation too, but we call directly to
+  # make the dependency clear and ensure the profile includes claude binary detection.
+  if apparmor_available; then
+    apparmor_generate_profile "$username"
+    log "AppArmor profile generated: rovibe-$username"
+  else
+    log "WARN: AppArmor not available, execution sandboxing disabled"
+  fi
+
   # Write profile metadata
   echo "$PROFILE" > "/opt/rovibe/$username/.rovibe-profile"
   chown root:agents "/opt/rovibe/$username/.rovibe-profile"
@@ -187,7 +198,7 @@ create_agent() {
   local bashrc="$home/.bashrc"
   log "Writing restricted .bashrc..."
   sudo tee "$bashrc" >/dev/null <<BASHRC
-# rovibe agent shell — restricted PATH
+# rovibe agent shell, restricted PATH
 export PATH="/opt/rovibe/$username/bin"
 
 # Prevent user from resetting PATH
@@ -200,7 +211,7 @@ BASHRC
   local bash_profile="$home/.bash_profile"
   log "Writing .bash_profile..."
   sudo tee "$bash_profile" >/dev/null <<'PROFILE'
-# rovibe agent login shell — source .bashrc for restricted PATH
+# rovibe agent login shell, source .bashrc for restricted PATH
 if [[ -f "$HOME/.bashrc" ]]; then
   source "$HOME/.bashrc"
 fi
@@ -208,7 +219,7 @@ PROFILE
   sudo chown "$username":agents "$bash_profile"
   sudo chmod 644 "$bash_profile"
 
-  # Set limits.conf entry (Linux only) — limit resource usage
+  # Set limits.conf entry (Linux only), limit resource usage
   if [[ "$os" == "Linux" ]]; then
     sudo mkdir -p /etc/security/limits.d
     local limits_file="/etc/security/limits.d/$username.conf"
@@ -252,6 +263,12 @@ delete_agent() {
   fi
 
   log "Deleting agent '$username'..."
+
+  # Remove AppArmor profile before killing processes
+  if apparmor_available; then
+    apparmor_remove_profile "$username"
+    log "Removed AppArmor profile: rovibe-$username"
+  fi
 
   # Kill any running processes
   sudo pkill -u "$username" 2>/dev/null || true

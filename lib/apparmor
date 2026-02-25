@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# Sourced helper, not directly executable
+[[ "${BASH_SOURCE[0]}" == "$0" ]] && { echo "Error: source this file, don't execute it" >&2; exit 1; }
+
+APPARMOR_PROFILE_DIR="/etc/apparmor.d/rovibe"
+
+apparmor_available() {
+  [[ -f /sys/module/apparmor/parameters/enabled ]] || return 1
+  [[ "$(<  /sys/module/apparmor/parameters/enabled)" == "Y" ]] || return 1
+  [[ -d /etc/apparmor.d/abstractions ]] || return 1
+  command -v apparmor_parser >/dev/null 2>&1 || return 1
+  command -v aa-exec >/dev/null 2>&1 || return 1
+  return 0
+}
+
+apparmor_generate_profile() {
+  local agent="$1"
+  local bin_dir="/opt/rovibe/$agent/bin"
+  local profile_path="$APPARMOR_PROFILE_DIR/rovibe-$agent"
+
+  [[ -d "$bin_dir" ]] || return 1
+
+  # Collect resolved binary paths from bin symlinks
+  local executables=()
+  for link in "$bin_dir"/*; do
+    [[ -L "$link" ]] || continue
+    local target
+    target=$(realpath "$link" 2>/dev/null) || continue
+    executables+=("$target")
+  done
+
+  # Detect claude binary (same probe as create-agent/launch)
+  local claude_bin=""
+  local claude_real=""
+  local claude_dir=""
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    claude_bin=$(sudo -u "$SUDO_USER" bash -c 'command -v claude' 2>/dev/null || true)
+  fi
+  if [[ -z "$claude_bin" && -n "${SUDO_USER:-}" && \
+        -x "/home/$SUDO_USER/.claude/local/claude" ]]; then
+    claude_bin="/home/$SUDO_USER/.claude/local/claude"
+  fi
+  if [[ -n "$claude_bin" ]]; then
+    claude_real=$(realpath "$claude_bin" 2>/dev/null) || claude_real="$claude_bin"
+    claude_dir=$(dirname "$claude_real")
+  fi
+
+  # Resolve Node.js entry point from wrapper's exec target
+  local claude_entry=""
+  if [[ -n "$claude_bin" && -f "$claude_bin" ]]; then
+    claude_entry=$(readlink -f "$(grep -oP '(?<=")[^"]+' "$claude_bin" | head -1)") 2>/dev/null || claude_entry=""
+  fi
+
+  # Build executable rules
+  local exec_rules=""
+  for target in "${executables[@]}"; do
+    exec_rules+="  $target rix,
+"
+  done
+
+  # Build claude rules
+  local claude_rules=""
+  if [[ -n "$claude_real" ]]; then
+    claude_rules="  # Claude Code binary + installation directory
+  $claude_real rix,
+  $claude_dir/** mr,
+"
+    if [[ -n "$claude_entry" && "$claude_entry" == *.js ]]; then
+      claude_rules+="  $claude_entry rix,
+"
+    fi
+  fi
+
+  mkdir -p "$APPARMOR_PROFILE_DIR"
+
+  cat > "$profile_path" <<PROFILE
+#include <tunables/global>
+
+profile rovibe-$agent {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  # env shebang interpreter (required for npm-based Claude Code installs)
+  /usr/bin/env rix,
+
+  # Terminal detection (used broadly by login shell init)
+  /usr/bin/tty rix,
+  /usr/bin/flatpak rix,
+
+  # Allowed executables (resolved from bin symlinks)
+${exec_rules}
+${claude_rules}
+  # Agent bin (PATH resolution, symlink reading)
+  /opt/rovibe/$agent/bin/ r,
+  /opt/rovibe/$agent/bin/* rl,
+
+  # Agent home (owner-scoped)
+  owner /home/$agent/ r,
+  owner /home/$agent/** rwkl,
+
+  # Scratch directories (any project, this agent only)
+  /*/.scratch/reviews/$agent/ rw,
+  /*/.scratch/reviews/$agent/** rw,
+
+  # System libraries (load, not execute)
+  /lib/** mr,
+  /lib64/** mr,
+  /usr/lib/** mr,
+  /usr/lib64/** mr,
+
+  # Device access (explicit, supplements abstractions/base)
+  /dev/null rw,
+  /dev/tty rw,
+  /dev/urandom r,
+  /dev/pts/ r,
+  /dev/pts/* rw,
+
+  # Temp
+  /tmp/** rwk,
+  /var/tmp/** rwk,
+
+  # System info (read-only)
+  /proc/** r,
+  /sys/** r,
+  /etc/** r,
+
+  # Locale, timezone, shared data
+  /usr/share/** r,
+
+  # Network (required for Claude API)
+  network inet stream,
+  network inet dgram,
+  network inet6 stream,
+  network inet6 dgram,
+  network unix stream,
+  network unix dgram,
+}
+PROFILE
+
+  apparmor_parser -r "$profile_path"
+}
+
+apparmor_remove_profile() {
+  local agent="$1"
+  local profile_path="$APPARMOR_PROFILE_DIR/rovibe-$agent"
+
+  if [[ -f "$profile_path" ]]; then
+    apparmor_parser -R "$profile_path" 2>/dev/null || true
+    rm -f "$profile_path"
+  fi
+}

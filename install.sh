@@ -24,7 +24,7 @@ ensure_claude_traversable() {
   for dir in "${components[@]}"; do
     # Safety: never touch /root or anything under it
     if [[ "$dir" == "/root" || "$dir" == /root/* ]]; then
-      log "SKIP chmod: '$dir' is under /root — manual intervention required"
+      log "SKIP chmod: '$dir' is under /root, manual intervention required"
       return 1
     fi
 
@@ -49,7 +49,7 @@ ensure_claude_traversable() {
       continue
     fi
 
-    # Safe to chmod — only add execute for others
+    # Safe to chmod, only add execute for others
     chmod o+x "$dir"
     log "  chmod o+x $dir"
   done
@@ -59,7 +59,7 @@ BIN_DIR="/usr/local/bin"
 LIB_DIR="/usr/local/lib/rovibe"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-HELPERS=(create-agent sync-mirror assign unassign launch list allow restrict uninstall.sh)
+HELPERS=(create-agent sync-mirror assign unassign launch list allow restrict uninstall.sh apparmor)
 
 # --- Remove old standalone scripts from /usr/local/bin ---
 log "Removing old standalone scripts from $BIN_DIR..."
@@ -91,7 +91,7 @@ done
 # Provision system resources
 groupadd -f agents
 # Per-agent bins live under /opt/rovibe/<agent>/bin/, created by create-agent.
-# Legacy /opt/agents/bin/ is not removed — left for manual cleanup.
+# Legacy /opt/agents/bin/ is not removed, left for manual cleanup.
 mkdir -p /opt/rovibe
 log "Provisioned agents group and /opt/rovibe"
 
@@ -106,9 +106,9 @@ if [[ -z "$CLAUDE_BIN" && -n "${SUDO_USER:-}" && -x "/home/$SUDO_USER/.claude/lo
 fi
 
 if [[ -z "$CLAUDE_BIN" ]]; then
-  log "WARN: claude not found — skipping traversal fix. Install Claude Code before using rovibe launch."
+  log "WARN: claude not found, skipping traversal fix. Install Claude Code before using rovibe launch."
 elif [[ "$CLAUDE_BIN" == /root/* ]]; then
-  log "WARN: claude is under /root — cannot grant agent access safely. Move claude to a non-root location."
+  log "WARN: claude is under /root, cannot grant agent access safely. Move claude to a non-root location."
 else
   CLAUDE_BIN=$(realpath "$CLAUDE_BIN")
   log "  Found claude at: $CLAUDE_BIN"
@@ -116,10 +116,24 @@ else
   # Safety: refuse if binary is world-writable
   bin_perms=$(stat -c "%a" "$CLAUDE_BIN")
   if (( 8#$bin_perms & 0002 )); then
-    log "WARN: '$CLAUDE_BIN' is world-writable — refusing to grant access. Fix permissions first."
+    log "WARN: '$CLAUDE_BIN' is world-writable, refusing to grant access. Fix permissions first."
   else
     ensure_claude_traversable "$CLAUDE_BIN" "${SUDO_USER:-$USER}"
   fi
+fi
+
+# --- Generate AppArmor profiles for existing agents ---
+source "$LIB_DIR/apparmor"
+if apparmor_available; then
+  log "AppArmor detected, generating profiles for existing agents..."
+  for agent_dir in /opt/rovibe/*/; do
+    [[ -d "$agent_dir/bin" ]] || continue
+    agent=$(basename "$agent_dir")
+    apparmor_generate_profile "$agent"
+    log "  Generated profile: rovibe-$agent"
+  done
+else
+  log "AppArmor not available, execution sandboxing disabled"
 fi
 
 log "Installation complete."

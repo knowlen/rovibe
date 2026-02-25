@@ -5,13 +5,15 @@ SCRIPT="restrict"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apparmor"
+
 usage() {
   cat <<'EOF'
 Usage: restrict <agent> <cmd> [<cmd> ...]
 
 Removes commands from an agent's per-agent bin, revoking access.
 
-Only removes symlinks — refuses to delete non-symlink entries.
+Only removes symlinks, refuses to delete non-symlink entries.
 EOF
   exit 1
 }
@@ -23,6 +25,8 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 AGENT_USER="$1"; shift
+id "$AGENT_USER" >/dev/null 2>&1 || \
+  err "Agent user '$AGENT_USER' does not exist"
 BIN_DIR="/opt/rovibe/$AGENT_USER/bin"
 [[ -d "$BIN_DIR" ]] || err "Bin directory does not exist: $BIN_DIR"
 
@@ -32,7 +36,7 @@ for cmd in "$@"; do
     rm "$target"
     log "  restricted $cmd"
   elif [[ -e "$target" ]]; then
-    log "SKIP $cmd: exists but is not a symlink — not removing"
+    log "SKIP $cmd: exists but is not a symlink, not removing"
   else
     log "SKIP $cmd: not in agent's bin"
   fi
@@ -47,4 +51,10 @@ if [[ -f "$profile_file" ]]; then
       echo "custom" > "$profile_file"
       ;;
   esac
+fi
+
+# Regenerate AppArmor profile to reflect updated allowlist
+if apparmor_available; then
+  apparmor_generate_profile "$AGENT_USER"
+  log "AppArmor profile updated, changes take effect on next launch"
 fi

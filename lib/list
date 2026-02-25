@@ -5,6 +5,8 @@ SCRIPT="list"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apparmor"
+
 usage() {
   cat <<'EOF'
 Usage: list [<agent> | <project>]
@@ -60,19 +62,22 @@ get_last_active() {
 PROJECT_DIR=""
 AGENT_USER=""
 
+operator_home=$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       usage
       ;;
     *)
-      # Classify bare args by type.
-      # ~* in [[ ]] matches a literal tilde — correct for detection;
-      # eval echo handles actual expansion in the -d fallback.
+      # Classify bare args by type, not position.
+      # Only ~/... is expanded; ~user/... is not supported (use absolute paths)
       if [[ "$1" == /* || "$1" == ~* || "$1" == ./* || "$1" == */* ]] \
-         || [[ -d "$(eval echo "$1" 2>/dev/null)" ]]; then
+         || [[ -d "$1" ]]; then
         [[ -z "$PROJECT_DIR" ]] || err "ambiguous: two paths provided"
         PROJECT_DIR="$1"
+        [[ "$PROJECT_DIR" == ~/* || "$PROJECT_DIR" == "~" ]] && \
+          PROJECT_DIR="${PROJECT_DIR/#\~/$operator_home}"
       elif id "$1" >/dev/null 2>&1 && id -nG "$1" 2>/dev/null | grep -qw agents; then
         [[ -z "$AGENT_USER" ]] || err "ambiguous: two agent users provided"
         AGENT_USER="$1"
@@ -103,6 +108,15 @@ if [[ -n "$AGENT_USER" ]]; then
   profile=$(get_agent_profile "$AGENT_USER")
   printf "AGENT: %s\n" "$AGENT_USER"
   printf "PROFILE: %s\n" "$profile"
+  if apparmor_available; then
+    if [[ -f "$APPARMOR_PROFILE_DIR/rovibe-$AGENT_USER" ]]; then
+      printf "APPARMOR: %s\n" "enforcing"
+    else
+      printf "APPARMOR: %s\n" "no profile"
+    fi
+  else
+    printf "APPARMOR: %s\n" "unavailable"
+  fi
   printf "%-20s %-12s %-20s %s\n" "PROJECT" "ROLE" "LAST ACTIVE" "SOURCE"
   printf "%-20s %-12s %-20s %s\n" "-------" "----" "-----------" "------"
 

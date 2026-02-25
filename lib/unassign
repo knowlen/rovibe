@@ -8,7 +8,7 @@ err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 usage() {
   cat <<'EOF'
 Usage: unassign <agent> <project> [--purge-scratch]
-       (args are order-independent — inferred by type)
+       (args are order-independent, inferred by type)
 
 Removes an agent's assignment for a project:
   1. Removes symlinks from the mirror
@@ -28,6 +28,8 @@ PROJECT_DIR=""
 PURGE_SCRATCH=false
 ORIG_ARGS=("$@")
 
+operator_home=$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --purge-scratch)
@@ -39,12 +41,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       # Classify bare args by type, not position.
-      # ~* in [[ ]] matches a literal tilde — correct for detection;
-      # eval echo handles actual expansion in the -d fallback.
+      # Only ~/... is expanded; ~user/... is not supported (use absolute paths)
       if [[ "$1" == /* || "$1" == ~* || "$1" == ./* || "$1" == */* ]] \
-         || [[ -d "$(eval echo "$1" 2>/dev/null)" ]]; then
+         || [[ -d "$1" ]]; then
         [[ -z "$PROJECT_DIR" ]] || err "ambiguous: two paths provided"
         PROJECT_DIR="$1"
+        [[ "$PROJECT_DIR" == ~/* || "$PROJECT_DIR" == "~" ]] && \
+          PROJECT_DIR="${PROJECT_DIR/#\~/$operator_home}"
       elif id "$1" >/dev/null 2>&1 && id -nG "$1" 2>/dev/null | grep -qw agents; then
         [[ -z "$AGENT_USER" ]] || err "ambiguous: two agent users provided"
         AGENT_USER="$1"
@@ -93,7 +96,7 @@ done < <(find "$MIRROR_DIR" -mindepth 1 -type d -empty -print0 2>/dev/null | sor
 
 # --- Step 4: Remove mirror root ---
 if [[ -d "$MIRROR_DIR" ]]; then
-  # One more pass — there may be nested empties now
+  # One more pass, there may be nested empties now
   find "$MIRROR_DIR" -mindepth 1 -type d -empty -delete 2>/dev/null || true
   rmdir "$MIRROR_DIR" 2>/dev/null || log "WARN: Mirror dir not empty, not removed: $MIRROR_DIR"
 fi
