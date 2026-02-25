@@ -84,11 +84,11 @@ Commands:
                                                      network-isolated
   delete <username>                        Delete an agent identity
   assign <agent> <project> [--role <role>] Assign agent to project
-  unassign <agent> <project>               Remove agent's project assignment
+  unassign <agent> <project>               Remove agents project assignment
   launch <agent> <project>                 Launch an agent session
   list [<agent>|<project>]                 List agents and assignment status
   allow <agent> <cmd> [<cmd> ...]          Allow agent to run commands
-  restrict <agent> <cmd> [<cmd> ...]       Revoke agent's access to commands
+  restrict <agent> <cmd> [<cmd> ...]       Revoke agents access to commands
   sync <project>                           Sync all mirrors for a project
   uninstall [--purge]                      Remove rovibe from the system
 
