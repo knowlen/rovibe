@@ -17,6 +17,16 @@ virtual environments, but for users and enforced by the kernel instead of the ru
 
 Maintained for Arch Linux. Exploring options for Mac.
 
+## How it works
+
+Each agent gets:
+- A dedicated Linux user account in the `agents` group
+- A per-agent bin directory (`/opt/rovibe/<agent>/bin/`) with symlinks
+  to approved system binaries — nothing else is in PATH
+- A read-only symlink mirror of the target project
+- A writable scratch space for output
+- An AppArmor profile (if available) enforcing the allowlist at the
+  kernel level
 
 ## Threat model
 
@@ -31,16 +41,6 @@ accidental damage, not for confining adversarial agents.
 profile can run, regardless of how the path was obtained. `python3`
 subprocess, `find -exec`, `bash --norc`, all blocked.
 
-## How it works
-
-Each agent gets:
-- A dedicated Linux user account in the `agents` group
-- A per-agent bin directory (`/opt/rovibe/<agent>/bin/`) with symlinks
-  to approved system binaries — nothing else is in PATH
-- A read-only symlink mirror of the target project
-- A writable scratch space for output
-- An AppArmor profile (if available) enforcing the allowlist at the
-  kernel level
 
 ## Installation
 
