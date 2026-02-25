@@ -115,7 +115,7 @@ rovibe create a.noir
 [create-agent] PATH: /opt/rovibe/a.noir/bin
 
 # Assign agent to a project
-rovibe assign <agent> <project-dir> [--role <role>] [--claude-md <path>]
+rovibe assign a.noir ~/repos/rovibe --role reviewer
 [assign] Setting agents group permissions on /home/nknowles/repos/rovibe...
 [assign] Creating symlink mirror at /home/a.noir/mirrors/rovibe...
 [sync-mirror] Syncing /home/nknowles/repos/rovibe -> /home/a.noir/mirrors/rovibe
