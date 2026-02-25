@@ -73,7 +73,6 @@ sudo bash install.sh
 
 ## Usage
 
-All commands go through the `rovibe` dispatcher.
 ```bash
 $ rovibe -h
 Usage: rovibe <command> [args...]
