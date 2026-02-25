@@ -38,7 +38,7 @@ def generate(reg_b64, bold_b64):
 <rect width="860" height="440" fill="#000000"/>
 
 <!-- TITLE (centered) -->
-<text x="430" y="54" font-size="26" font-weight="700" fill="#ffffff" text-anchor="middle">rovibe</text>
+<text x="430" y="52" font-size="26" font-weight="700" fill="#ffffff" text-anchor="middle">rovibe</text>
 <!--
 <text x="430" y="52" font-size="10" fill="#808080" letter-spacing="2.5" text-anchor="middle">AGENT ISOLATION OVERVIEW</text>
 -->
