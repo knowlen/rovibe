@@ -189,6 +189,12 @@ AGENT                ROLE         LAST ACTIVE
 a.red                genius       02-24-2026 23:33
 a.noir               reviewer     02-23-2026 17:46
 
+$ rovibe delete a.noir
+[sudo] password for nknowles:
+[rovibe] Deleting agent 'a.noir'...
+[rovibe] Removed AppArmor profile: rovibe-a.noir
+[rovibe] Agent 'a.noir' deleted.
+
 ```
 
 ## Profiles
