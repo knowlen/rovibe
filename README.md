@@ -10,7 +10,7 @@
  
 I believe Claude Code sessions should run under their own user accounts. 
 I think those accounts should only have execute and write permissions on 
-files and commands necessary within the scope of their work, and I realized that 
+files and commands necessary within the scope of their work, and I realize that 
 `settings.json` config / runtime config files don't
 actually guarantee this. So I threw together a tool that can. Sort of like 
 virtual environments, but for users and enforced by the kernel instead of the runtime.
