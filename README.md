@@ -8,17 +8,18 @@
 ![rovibe architecture](docs/rovibe-diag.svg)
 
  
-I believe CC sessions should run under their own user accounts. 
+I believe Claude Code sessions should run under their own user accounts. 
 I think those accounts should only have execute and write permissions on 
 files and commands necessary within the scope of their work, and I realized that 
-settings.json config / runtime config files don't
+`settings.json` config / runtime config files don't
 actually guarantee this. So I threw together a tool that can. Sort of like 
 virtual environments, but for users and enforced by the kernel instead of the runtime.
 
-It currently works by provisioning OS
+This currently works by provisioning OS
 user accounts with restricted binary allowlists and read-only symlink
-mirrors of a project. I can then flip the w and x permissions manually 
-to configure granular access scopes within a broader codebase.  
+mirrors of a project. The w and x permissions can then be manually flipped 
+to configure granular access scopes within a broader codebase for a specific 
+coding CLI session.  
 
 Maintained for Arch Linux. Exploring options for support Mac.
 
