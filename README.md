@@ -16,11 +16,11 @@ Maintained for Arch Linux. Exploring options for support Mac.
 
 I believe CC sessions should run under their own user accounts. 
 I think those accounts should only have execute and write permissions on 
-only the specific files and commands necessary within the scope of their work. 
-I know (as a Machine Learning expert) that settings.json config / prompt 
+files and commands necessary within the scope of their work. 
+I know that settings.json config / prompt 
 files cannot actually guarantee this. 
 Oh and I think they should be able to ask each other clarifying questions 
-or critique that work. That's why I built this.
+or critique that work. So I converged on this workflow.
 
 
 ## Threat model
