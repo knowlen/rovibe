@@ -50,9 +50,7 @@ def generate(reg_b64, bold_b64):
 <text x="728" y="74" font-size="9" fill="#87ffff" letter-spacing="2" text-anchor="middle">AGENT</text>
 
 <!-- TOP RULE -->
-<!--
-<line x1="40" y1="80" x2="820" y2="80" stroke="#1e1e1e" stroke-width="1"/>
--->
+<line x1="40" y1="50" x2="820" y2="50" stroke="#1e1e1e" stroke-width="1"/>
 
 <!-- VERTICAL COLUMN DIVIDERS (stop before footer) -->
 <!--
