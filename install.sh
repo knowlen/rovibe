@@ -119,6 +119,8 @@ else
     log "WARN: '$CLAUDE_BIN' is world-writable, refusing to grant access. Fix permissions first."
   else
     ensure_claude_traversable "$CLAUDE_BIN" "${SUDO_USER:-$USER}"
+    echo "$CLAUDE_BIN" > /opt/rovibe/.claude-path
+    chmod 644 /opt/rovibe/.claude-path
   fi
 fi
 

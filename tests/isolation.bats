@@ -214,7 +214,6 @@ teardown() {
 }
 
 @test "restrict errors on nonexistent agent" {
-  skip "requires H4 fix: restrict missing agent existence check"
   run rovibe restrict nonexistent.agent bash
   [ "$status" -ne 0 ]
   [[ "$output" == *"Agent user"*"does not exist"* ]]
@@ -243,8 +242,7 @@ teardown() {
 # C4 security fix is applied (scratch dirs mode 700, agent-owned).
 # ---------------------------------------------------------------------------
 
-@test "XFAIL: agent cannot read another agent's scratch dir" {
-  skip "requires C4 fix: scratch dirs currently group-writable via agents group"
+@test "agent cannot read another agent's scratch dir" {
   rovibe create t.other
   rovibe assign t.other "$PROJECT_DIR" --role test
   local scratch="$PROJECT_DIR/.scratch/reviews/t.other"

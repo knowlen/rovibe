@@ -37,7 +37,7 @@ PROFILE_READ_ONLY=(
   basename dirname realpath readlink
   lsblk lscpu lsmem
   ps id whoami uptime free
-  diff cmp md5sum sha256sum
+  diff cmp md5sum sha256sum base64
   true false sleep
   jq xargs
   date uname
@@ -51,7 +51,7 @@ PROFILE_NETWORK_ISOLATED=(
   basename dirname realpath readlink
   lsblk lscpu lsmem
   ps id whoami uptime free
-  diff cmp md5sum sha256sum
+  diff cmp md5sum sha256sum base64
   true false sleep
   jq xargs
   date uname
@@ -72,7 +72,7 @@ PROFILE_STANDARD=(
   basename dirname realpath readlink
   lsblk lscpu lsmem
   ps id whoami uptime free
-  diff cmp md5sum sha256sum
+  diff cmp md5sum sha256sum base64
   true false sleep
   jq xargs
   date uname
@@ -156,8 +156,8 @@ create_agent() {
     esac
   fi
 
-  # Make home traversable so agent can cd into it
-  sudo chmod 711 "$home"
+  # Agent home: owner-only access (AppArmor handles legitimate paths)
+  sudo chmod 700 "$home"
 
   # Ensure user is in agents group
   case "$os" in

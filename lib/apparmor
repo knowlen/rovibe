@@ -40,6 +40,9 @@ apparmor_generate_profile() {
         -x "/home/$SUDO_USER/.claude/local/claude" ]]; then
     claude_bin="/home/$SUDO_USER/.claude/local/claude"
   fi
+  if [[ -z "$claude_bin" && -f /opt/rovibe/.claude-path ]]; then
+    claude_bin=$(<"/opt/rovibe/.claude-path")
+  fi
   if [[ -n "$claude_bin" ]]; then
     claude_real=$(realpath "$claude_bin" 2>/dev/null) || claude_real="$claude_bin"
     claude_dir=$(dirname "$claude_real")
