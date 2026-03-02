@@ -5,6 +5,8 @@ SCRIPT="assign"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apparmor"
+
 usage() {
   cat <<'EOF'
 Usage: assign <agent> <project> [--role <role>] [--claude-md <path>]
@@ -213,3 +215,10 @@ add_to_gitignore ".scratch/"
 log "Agent '$AGENT_USER' assigned to '$PROJECT_NAME'."
 log "Mirror: $MIRROR_DIR"
 log "Scratch: $SCRATCH_DIR"
+
+# --- Step 7: Regenerate AppArmor profile ---
+if apparmor_available; then
+  if apparmor_generate_profile "$AGENT_USER" 2>/dev/null; then
+    log "AppArmor profile updated with project read access"
+  fi
+fi

@@ -71,6 +71,24 @@ apparmor_generate_profile() {
     fi
   fi
 
+  # Collect project source paths from mirror assignments
+  local project_rules=""
+  local mirrors_dir="/home/$agent/mirrors"
+  if [[ -d "$mirrors_dir" ]]; then
+    for mirror in "$mirrors_dir"/*/; do
+      [[ -d "$mirror" ]] || continue
+      local source_file="$mirror/.rovibe-source"
+      [[ -f "$source_file" ]] || continue
+      local src_path
+      src_path=$(<"$source_file")
+      [[ -n "$src_path" && -d "$src_path" ]] || continue
+      project_rules+="  # Project source: $src_path
+  $src_path/ r,
+  $src_path/** r,
+"
+    done
+  fi
+
   mkdir -p "$APPARMOR_PROFILE_DIR"
 
   cat > "$profile_path" <<PROFILE
@@ -99,9 +117,11 @@ ${claude_rules}
   owner /home/$agent/** rwkl,
 
   # Scratch directories (any project, this agent only)
-  /*/.scratch/reviews/$agent/ rw,
-  /*/.scratch/reviews/$agent/** rw,
+  /**/.scratch/reviews/$agent/ rw,
+  /**/.scratch/reviews/$agent/** rw,
 
+  # Assigned project sources (read-only)
+${project_rules}
   # System libraries (load, not execute)
   /lib/** mr,
   /lib64/** mr,

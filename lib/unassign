@@ -5,6 +5,8 @@ SCRIPT="unassign"
 log()  { echo "[$SCRIPT] $*"; }
 err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apparmor"
+
 usage() {
   cat <<'EOF'
 Usage: unassign <agent> <project> [--purge-scratch]
@@ -111,3 +113,14 @@ if $PURGE_SCRATCH; then
 fi
 
 log "Agent '$AGENT_USER' unassigned from '$PROJECT_NAME'."
+
+# Remove rovibe metadata so AppArmor regeneration excludes this project
+rm -f "$MIRROR_DIR/.rovibe-source"
+rm -f "$MIRROR_DIR/.rovibe-role"
+
+# --- Step 6: Regenerate AppArmor profile ---
+if apparmor_available; then
+  if apparmor_generate_profile "$AGENT_USER" 2>/dev/null; then
+    log "AppArmor profile updated (project removed)"
+  fi
+fi
