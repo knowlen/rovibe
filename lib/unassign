@@ -77,6 +77,10 @@ if [[ ! -d "$MIRROR_DIR" ]]; then
   exit 0
 fi
 
+# Remove rovibe metadata so AppArmor regeneration excludes this project
+rm -f "$MIRROR_DIR/.rovibe-source"
+rm -f "$MIRROR_DIR/.rovibe-role"
+
 # --- Step 1: Remove symlinks in mirror ---
 log "Removing symlinks from mirror..."
 while IFS= read -r -d '' link; do
@@ -113,10 +117,6 @@ if $PURGE_SCRATCH; then
 fi
 
 log "Agent '$AGENT_USER' unassigned from '$PROJECT_NAME'."
-
-# Remove rovibe metadata so AppArmor regeneration excludes this project
-rm -f "$MIRROR_DIR/.rovibe-source"
-rm -f "$MIRROR_DIR/.rovibe-role"
 
 # --- Step 6: Regenerate AppArmor profile ---
 if apparmor_available; then

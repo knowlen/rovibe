@@ -106,7 +106,7 @@ trap cleanup EXIT INT TERM
 if command -v fswatch >/dev/null 2>&1; then
   log "Starting fswatch watcher on $PROJECT_DIR..."
   (
-    fswatch -r -e '\.git' -e '\.scratch' "$PROJECT_DIR" | while read -r _; do
+    fswatch -r --latency 2 -e '\.git' -e '\.scratch' "$PROJECT_DIR" | while read -r _; do
       "$SYNC_MIRROR" "$PROJECT_DIR" "$MIRROR_DIR" 2>/dev/null || true
     done
   ) &
@@ -137,7 +137,7 @@ else
   err "'claude' not found. Install Claude Code: https://docs.anthropic.com/claude-code"
 fi
 
-# --- Step 3b: Generate/update AppArmor profile ---
+# --- Step 4: Generate/update AppArmor profile ---
 if apparmor_available; then
   apparmor_generate_profile "$AGENT_USER"
   log "AppArmor profile loaded: rovibe-$AGENT_USER"
@@ -145,7 +145,7 @@ else
   log "WARN: AppArmor not available, execution sandboxing disabled"
 fi
 
-# --- Step 4: Launch Claude Code as agent user ---
+# --- Step 5: Launch Claude Code as agent user ---
 log "Launching $CLAUDE_CMD as '$AGENT_USER' in $MIRROR_DIR..."
 
 CLAUDE_ARGS=()

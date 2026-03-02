@@ -7,6 +7,10 @@ err()  { echo "[$SCRIPT] ERROR: $*" >&2; exit 1; }
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apparmor"
 
+if [[ $EUID -ne 0 ]]; then
+  exec sudo /usr/local/lib/rovibe/list "$@"
+fi
+
 usage() {
   cat <<'EOF'
 Usage: list [<agent> | <project>]

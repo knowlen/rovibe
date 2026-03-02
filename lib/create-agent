@@ -346,5 +346,15 @@ if $DELETE_FLAG; then
   delete_agent "$USERNAME"
 else
   [[ -n "$USERNAME" ]] || err "Missing username"
+  # Validate username
+  if [[ ! "$USERNAME" =~ ^[a-z][a-z0-9._-]{0,30}$ ]]; then
+    err "Invalid username '$USERNAME': must start with a lowercase letter, contain only [a-z0-9._-], and be 31 characters or fewer"
+  fi
+  if [[ "$USERNAME" == "root" || "$USERNAME" == "rovibe" ]]; then
+    err "Reserved username '$USERNAME': cannot create agent with this name"
+  fi
+  if id "$USERNAME" >/dev/null 2>&1; then
+    err "Agent '$USERNAME' already exists"
+  fi
   create_agent "$USERNAME"
 fi
