@@ -8,7 +8,7 @@
 ![rovibe architecture](docs/rovibe-diag.svg)
 
  
-I've found it useful to run Claude Code sessions as their own user accounts, granting
+Run Claude Code sessions as their own user accounts, granting
 execute and write permissions only to the
 files and commands necessary for the scope of the work. 
 `settings.json` config files don't
